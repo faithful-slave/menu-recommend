@@ -1,363 +1,121 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>오늘 뭐 먹지? · 멀티 추천 모드</title>
-  <meta name="description" content="기본/환경반응형/개인맞춤형/재미형/사회적 추천형을 지원하는 메뉴 추천기" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>오늘 뭐 먹지 · 실시간(오늘 방문 + 투표)</title>
   <style>
-    :root{
-      --bg: #f7f7fb; --card: #ffffff; --text: #1f2937; --muted: #6b7280; --primary: #ef4444; --primary-600:#dc2626; --ring: rgba(239,68,68,.25); --border: #e5e7eb; --chip: #f3f4f6; --shadow: 0 6px 18px rgba(0,0,0,.06); --radius: 16px;
-    }
-    @media (prefers-color-scheme: dark){:root{ --bg:#0b0f14; --card:#121821; --text:#e5e7eb; --muted:#9ca3af; --primary:#f87171; --primary-600:#ef4444; --ring:rgba(248,113,113,.25); --border:#1f2937; --chip:#111827; --shadow:0 10px 24px rgba(0,0,0,.35); }}
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans KR",Arial;background:radial-gradient(1200px 600px at 80% -10%, rgba(239,68,68,.10), transparent 50%),radial-gradient(1200px 600px at 10% 110%, rgba(59,130,246,.10), transparent 50%),var(--bg);color:var(--text)}
-    .wrap{max-width:1080px;margin:40px auto;padding:0 20px}
-    header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
-    .brand{display:flex;align-items:center;gap:12px}
-    .logo{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:#fff;box-shadow:var(--shadow)}
-    h1{font-size:clamp(22px,3vw,28px);margin:0}
-    .sub{color:var(--muted);font-size:14px}
-
-    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 16px}
-    .tab{padding:10px 14px;border-radius:999px;border:1px solid var(--border);background:var(--chip);cursor:pointer;font-weight:600}
-    .tab[aria-selected="true"]{background:var(--primary);color:#fff;border-color:transparent}
-
-    .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
-    .panel{padding:20px}
-
-    .grid{display:grid;grid-template-columns:1fr;gap:14px}
-    @media(min-width:800px){.grid.cols-3{grid-template-columns:repeat(3,1fr)}.grid.cols-4{grid-template-columns:repeat(4,1fr)}}
-
-    label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
-    select,input[type="range"],button{font-size:15px}
-    select{width:100%;appearance:none;-webkit-appearance:none;padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:linear-gradient(var(--card),var(--card)) padding-box,linear-gradient(180deg,#fff0,#0000000d) border-box;color:var(--text);transition:box-shadow .2s,border-color .2s}
-    select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 4px var(--ring)}
-
-    .actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
-    .btn{padding:12px 16px;border-radius:12px;border:1px solid transparent;cursor:pointer;font-weight:700}
-    .btn-primary{background:var(--primary);color:#fff}
-    .btn-primary:hover{background:var(--primary-600)}
-    .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text)}
-
-    .result{margin-top:18px;display:grid;gap:14px}
-    .dish{display:flex;align-items:center;gap:16px;padding:16px;border:1px solid var(--border);border-radius:14px}
-    .dish-emoji{width:56px;height:56px;border-radius:14px;display:grid;place-items:center;font-size:28px;background:var(--chip)}
-    .dish-main{flex:1}
-    .dish-name{font-size:18px;font-weight:800;letter-spacing:-.2px;margin:0 0 4px}
-    .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
-    .chip{font-size:12px;padding:6px 10px;background:var(--chip);border-radius:999px;color:var(--muted);border:1px solid var(--border)}
-    .muted{color:var(--muted);font-size:14px}
-
-    footer{text-align:center;color:var(--muted);font-size:12px;padding:22px 0 40px}
+    body{font-family:system-ui, -apple-system, Segoe UI, Roboto, 'Noto Sans KR', Arial;
+         margin:40px auto; max-width:900px; padding:0 16px; line-height:1.6}
+    h1{margin:0 0 8px}
+    .card{border:1px solid #e5e7eb; border-radius:14px; padding:16px; margin:14px 0}
+    .row{display:flex; gap:10px; flex-wrap:wrap}
+    button{padding:8px 12px; border-radius:10px; border:1px solid #e5e7eb; cursor:pointer}
+    .muted{color:#6b7280}
+    .pill{display:inline-block; padding:4px 10px; border:1px solid #e5e7eb; border-radius:999px; margin-right:6px}
   </style>
+
+  <!-- Firebase CDN (npm 안 쓰는 순수 HTML용) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js"></script>
 </head>
 <body>
-  <main class="wrap">
-    <header>
-      <div class="brand">
-        <div class="logo" aria-hidden="true">🍱</div>
-        <div>
-          <h1>오늘 뭐 먹지?</h1>
-          <div class="sub">기본 · 환경반응형 · 개인맞춤형 · 재미형 · 사회적 추천형</div>
-        </div>
-      </div>
-      <button class="btn btn-ghost" id="btnExport" title="내 취향/투표 데이터 백업">💾 백업</button>
-    </header>
+  <h1>🍱 오늘 뭐 먹지</h1>
+  <p class="muted">깃허브 페이지 + Firebase Realtime DB (오늘 누적 접속자 · 투표 동기화)</p>
 
-    <nav class="tabs" role="tablist">
-      <button class="tab" role="tab" aria-selected="true" data-tab="basic">조건 기반 추천형</button>
-      <button class="tab" role="tab" aria-selected="false" data-tab="env">환경 반응형</button>
-      <button class="tab" role="tab" aria-selected="false" data-tab="learn">개인 맞춤형</button>
-      <button class="tab" role="tab" aria-selected="false" data-tab="random">랜덤 도전형</button>
-      <button class="tab" role="tab" aria-selected="false" data-tab="vote">사회적 추천형</button>
-    </nav>
+  <div class="card">
+    <h2>📈 오늘 누적 접속자</h2>
+    <div>오늘(Asia/Seoul) 방문 수: <strong id="todayCount">0</strong> 명</div>
+  </div>
 
-    <!-- BASIC: 시간/맵기/국가 -->
-    <section class="card panel" id="panel-basic">
-      <h2 class="visually-hidden">조건 기반 추천형</h2>
-      <div class="grid cols-3">
-        <div>
-          <label for="b-time">식사 시간대</label>
-          <select id="b-time"><option>아침</option><option selected>점심</option><option>저녁</option><option>야식</option><option>간식</option></select>
-        </div>
-        <div>
-          <label for="b-spicy">맵기</label>
-          <select id="b-spicy"><option>0-안매움</option><option selected>1-약간</option><option>2-중간</option><option>3-매움</option></select>
-        </div>
-        <div>
-          <label for="b-nation">국가별</label>
-          <select id="b-nation"><option selected>한식</option><option>중식</option><option>일식</option><option>양식</option><option>동남아</option><option>인도</option><option>멕시코</option><option>기타</option></select>
-        </div>
-      </div>
-      <div class="actions"><button class="btn btn-primary" id="btnBasic">추천받기</button><button class="btn btn-ghost" id="btnBasicReset">초기화</button></div>
-      <div class="result" id="res-basic"><p class="muted">조건을 바꾸면 자동으로 초기화 후 재추천됩니다.</p></div>
-    </section>
-
-    <!-- ENV: 날씨/기분/요일 -->
-    <section class="card panel" id="panel-env" hidden>
-      <h2 class="visually-hidden">환경 반응형</h2>
-      <div class="grid cols-3">
-        <div><label for="e-weather">날씨</label><select id="e-weather"><option selected>맑음</option><option>흐림</option><option>비</option><option>눈</option><option>습함</option><option>추움</option><option>더움</option></select></div>
-        <div><label for="e-mood">기분</label><select id="e-mood"><option selected>기분좋음</option><option>평범</option><option>피곤</option><option>우울</option><option>축하</option></select></div>
-        <div><label for="e-dow">요일</label><select id="e-dow"><option>월</option><option>화</option><option>수</option><option>목</option><option>금</option><option>토</option><option>일</option></select></div>
-      </div>
-      <div class="actions"><button class="btn btn-primary" id="btnEnv">추천받기</button><button class="btn btn-ghost" id="btnEnvReset">초기화</button></div>
-      <div class="result" id="res-env"><p class="muted">날씨/기분/요일 조합으로 어울리는 메뉴를 추천합니다.</p></div>
-    </section>
-
-    <!-- LEARN: 개인 맞춤형 (좋아요/싫어요 학습) -->
-    <section class="card panel" id="panel-learn" hidden>
-      <h2 class="visually-hidden">개인 맞춤형</h2>
-      <p class="muted">좋아요/싫어요로 학습합니다. 다음 추천부터 가중치에 반영돼요.</p>
-      <div class="actions"><button class="btn btn-primary" id="btnLearn">추천받기</button><button class="btn btn-ghost" id="btnLearnReset">학습 초기화</button></div>
-      <div class="result" id="res-learn"></div>
-    </section>
-
-    <!-- RANDOM: 도전형 -->
-    <section class="card panel" id="panel-random" hidden>
-      <h2 class="visually-hidden">랜덤 도전형</h2>
-      <div class="grid cols-4">
-        <div><label for="r-nation">국가 제외</label><select id="r-nation" multiple size="4"><option>한식</option><option>중식</option><option>일식</option><option>양식</option><option>동남아</option><option>인도</option><option>멕시코</option><option>기타</option></select></div>
-        <div><label for="r-spicy">맵기 범위</label><select id="r-spicy"><option>전체</option><option>0-안매움</option><option>1-약간</option><option>2-중간</option><option>3-매움</option></select></div>
-        <div><label for="r-light">가벼움</label><select id="r-light"><option>전체</option><option>매우 가벼움</option><option>가벼움</option><option>보통</option><option>든든함</option><option>헤비</option></select></div>
-        <div><label>도전 강도</label><input type="range" id="r-bold" min="0" max="3" value="1"/></div>
-      </div>
-      <div class="actions"><button class="btn btn-primary" id="btnRandom">도전!</button></div>
-      <div class="result" id="res-random"></div>
-    </section>
-
-    <!-- VOTE: 사회적 추천형 (로컬 투표) -->
-    <section class="card panel" id="panel-vote" hidden>
-      <h2 class="visually-hidden">사회적 추천형</h2>
-      <p class="muted">같이 보는 사람들과 투표해 보세요. 결과는 이 브라우저의 저장공간에만 기록됩니다.</p>
-      <div class="actions"><button class="btn btn-primary" id="btnVoteSeed">랜덤 후보 5개 생성</button><button class="btn btn-ghost" id="btnVoteReset">투표 초기화</button></div>
-      <div class="result" id="res-vote"></div>
-    </section>
-
-    <footer>Made with ❤ · GitHub Pages</footer>
-  </main>
+  <div class="card">
+    <h2>🗳️ 투표</h2>
+    <div id="voteButtons" class="row"></div>
+    <div style="margin-top:10px" id="voteResults" class="muted">로드 중…</div>
+  </div>
 
   <script>
-    // ====== 데이터셋 ======
-    const MENUS = [
-      // 한식
-      { name:'비빔밥', emoji:'🥗', time:'점심', light:'보통', spicy:'1-약간', nation:'한식', type:'밥' },
-      { name:'김치찌개', emoji:'🥘', time:'저녁', light:'보통', spicy:'3-매움', nation:'한식', type:'국·탕·찌개' },
-      { name:'된장찌개', emoji:'🍲', time:'저녁', light:'보통', spicy:'0-안매움', nation:'한식', type:'국·탕·찌개' },
-      { name:'제육볶음', emoji:'🍖', time:'점심', light:'든든함', spicy:'2-중간', nation:'한식', type:'밥' },
-      { name:'갈비탕', emoji:'🥣', time:'저녁', light:'든든함', spicy:'0-안매움', nation:'한식', type:'국·탕·찌개' },
-      { name:'김밥', emoji:'🍙', time:'아침', light:'가벼움', spicy:'0-안매움', nation:'한식', type:'분식' },
-      { name:'떡볶이', emoji:'🌶️', time:'간식', light:'보통', spicy:'2-중간', nation:'한식', type:'분식' },
-      { name:'라면', emoji:'🍜', time:'야식', light:'보통', spicy:'3-매움', nation:'한식', type:'면' },
-      { name:'물냉면', emoji:'🥶', time:'점심', light:'가벼움', spicy:'0-안매움', nation:'한식', type:'면' },
-      { name:'비빔냉면', emoji:'🥵', time:'점심', light:'가벼움', spicy:'2-중간', nation:'한식', type:'면' },
-      // 중식
-      { name:'짜장면', emoji:'🍝', time:'점심', light:'보통', spicy:'0-안매움', nation:'중식', type:'면' },
-      { name:'짬뽕', emoji:'🔥', time:'점심', light:'보통', spicy:'3-매움', nation:'중식', type:'면' },
-      { name:'마파두부', emoji:'🍲', time:'저녁', light:'가벼움', spicy:'2-중간', nation:'중식', type:'기타' },
-      { name:'꿔바로우', emoji:'🥩', time:'저녁', light:'헤비', spicy:'1-약간', nation:'중식', type:'기타' },
-      // 일식
-      { name:'초밥', emoji:'🍣', time:'저녁', light:'매우 가벼움', spicy:'0-안매움', nation:'일식', type:'밥' },
-      { name:'돈카츠', emoji:'🍱', time:'점심', light:'든든함', spicy:'1-약간', nation:'일식', type:'밥' },
-      { name:'우동', emoji:'🥢', time:'아침', light:'가벼움', spicy:'0-안매움', nation:'일식', type:'면' },
-      { name:'규동', emoji:'🍚', time:'저녁', light:'보통', spicy:'0-안매움', nation:'일식', type:'밥' },
-      // 양식
-      { name:'마르게리타 피자', emoji:'🍕', time:'저녁', light:'보통', spicy:'0-안매움', nation:'양식', type:'빵/버거' },
-      { name:'볼로네제 파스타', emoji:'🍝', time:'저녁', light:'보통', spicy:'0-안매움', nation:'양식', type:'면' },
-      { name:'치즈버거', emoji:'🍔', time:'점심', light:'헤비', spicy:'1-약간', nation:'양식', type:'빵/버거' },
-      { name:'시저샐러드', emoji:'🥗', time:'아침', light:'매우 가벼움', spicy:'0-안매움', nation:'양식', type:'샐러드/라이트' },
-      // 동남아
-      { name:'팟타이', emoji:'🍤', time:'저녁', light:'보통', spicy:'1-약간', nation:'동남아', type:'면' },
-      { name:'쌀국수', emoji:'🍜', time:'점심', light:'가벼움', spicy:'1-약간', nation:'동남아', type:'면' },
-      { name:'나시고렝', emoji:'🍚', time:'저녁', light:'보통', spicy:'2-중간', nation:'동남아', type:'밥' },
-      // 인도
-      { name:'버터치킨 커리', emoji:'🍛', time:'저녁', light:'보통', spicy:'1-약간', nation:'인도', type:'밥' },
-      { name:'팔락 파니르', emoji:'🥬', time:'점심', light:'가벼움', spicy:'1-약간', nation:'인도', type:'밥' },
-      { name:'치킨 티카', emoji:'🍗', time:'저녁', light:'보통', spicy:'2-중간', nation:'인도', type:'샐러드/라이트' },
-      // 멕시코
-      { name:'타코', emoji:'🌮', time:'점심', light:'가벼움', spicy:'1-약간', nation:'멕시코', type:'빵/버거' },
-      { name:'부리또', emoji:'🌯', time:'저녁', light:'보통', spicy:'2-중간', nation:'멕시코', type:'빵/버거' },
-      { name:'퀘사디야', emoji:'🫓', time:'간식', light:'보통', spicy:'1-약간', nation:'멕시코', type:'빵/버거' },
-      // 기타/라이트/디저트
-      { name:'연어포케', emoji:'🐟', time:'점심', light:'매우 가벼움', spicy:'0-안매움', nation:'기타', type:'샐러드/라이트' },
-      { name:'요거트 볼', emoji:'🥣', time:'아침', light:'매우 가벼움', spicy:'0-안매움', nation:'기타', type:'디저트' },
-      { name:'크로플', emoji:'🧇', time:'간식', light:'보통', spicy:'0-안매움', nation:'기타', type:'디저트' }
-    ];
+    // 1) 여기만 본인 프로젝트 값으로 교체 (Firebase 콘솔 → 웹앱 추가에서 제공)
+    const firebaseConfig = {
+      apiKey: "AIzaSyExample-abcdefg1234567890",
+      authDomain: "menu-app.firebaseapp.com",
+      databaseURL: "https://menu-app-default-rtdb.firebaseio.com",
+      projectId: "menu-app",
+      storageBucket: "menu-app.appspot.com",
+      messagingSenderId: "1234567890",
+      appId: "1:1234567890:web:abcdef123456"
+    };
 
-    // ====== 공통 유틸 ======
-    const $ = s => document.querySelector(s);
-    const $$ = s => [...document.querySelectorAll(s)];
-    const pick = arr => arr[Math.floor(Math.random()*arr.length)];
-    const chip = t => `<span class="chip">${t}</span>`;
-    const renderDish = m => `
-      <article class="dish" role="group" aria-label="추천 메뉴">
-        <div class="dish-emoji" aria-hidden="true">${m.emoji||'🍽️'}</div>
-        <div class="dish-main">
-          <h3 class="dish-name">${m.name}</h3>
-          <div class="chips">${chip(m.time)} ${chip(m.light)} ${chip(m.spicy)} ${chip(m.nation)} ${chip(m.type)}</div>
-        </div>
-        <button class="btn btn-ghost" aria-label="다시 추천" onclick="reroll(this)">🔁</button>
-      </article>`;
+    // 2) 투표 항목 정의 (원하는 메뉴로 바꾸세요)
+    const VOTE_OPTIONS = ["비빔밥", "라면", "김치찌개", "파스타", "초밥"];
 
-    function reroll(btn){ // 같은 컨텍스트에서 재추천
-      const panel = btn.closest('section');
-      if(panel.id==='panel-basic') doBasic(true);
-      else if(panel.id==='panel-env') doEnv(true);
-      else if(panel.id==='panel-learn') doLearn(true);
-      else if(panel.id==='panel-random') doRandom(true);
-      else if(panel.id==='panel-vote') doVoteSeed(true);
-    }
+    // --- Firebase 초기화 ---
+    const app = firebase.initializeApp(firebaseConfig);
+    const db  = firebase.database();
 
-    // ====== 탭 전환 ======
-    $$('.tab').forEach(t=>t.addEventListener('click',()=>{
-      $$('.tab').forEach(x=>x.setAttribute('aria-selected','false'));
-      t.setAttribute('aria-selected','true');
-      const key = t.dataset.tab;
-      ['basic','env','learn','random','vote'].forEach(k=>$('#panel-'+k).hidden = k!==key);
-    }));
-
-    // ====== BASIC: 변경 시 초기화 후 재적용 ======
-    const BASIC_DEFAULTS = { time:'점심', spicy:'1-약간', nation:'한식' };
-    function basicSetDefaults(){ ['b-time','b-spicy','b-nation'].forEach((id)=>{
-      const el = document.getElementById(id);
-      const val = BASIC_DEFAULTS[id.replace('b-','')];
-      const idx = [...el.options].findIndex(o=>o.value===val); if(idx>=0) el.selectedIndex = idx;
-    }); }
-    function doBasic(auto=false){
-      const f = { time:$('#b-time').value, spicy:$('#b-spicy').value, nation:$('#b-nation').value };
-      const group = MENUS.filter(m=>m.time===f.time && m.spicy===f.spicy && m.nation===f.nation);
-      const candidates = group.length?group:MENUS.filter(m=>m.spicy===f.spicy && m.nation===f.nation);
-      const chosen = pick(candidates.length?candidates:MENUS);
-      $('#res-basic').innerHTML = renderDish(chosen);
-      if(!auto) localStorage.setItem('basic', JSON.stringify(f));
-    }
-    ['b-time','b-spicy','b-nation'].forEach(id=>{
-      document.getElementById(id).addEventListener('change', (e)=>{
-        const val = e.target.value; basicSetDefaults();
-        const el = e.target; const idx = [...el.options].findIndex(o=>o.value===val); if(idx>=0) el.selectedIndex=idx;
-        doBasic(true);
+    // --- 유틸: 오늘 날짜(Asia/Seoul) YYYY-MM-DD ---
+    function todayKR() {
+      const now = new Date();
+      const formatter = new Intl.DateTimeFormat("ko-KR", {
+        timeZone: "Asia/Seoul",
+        year: "numeric", month: "2-digit", day: "2-digit"
       });
-    });
-    $('#btnBasic').addEventListener('click',()=>doBasic(false));
-    $('#btnBasicReset').addEventListener('click',()=>{basicSetDefaults(); $('#res-basic').innerHTML='<p class="muted">조건을 바꾸면 자동으로 초기화 후 재추천됩니다.</p>';});
+      const [{value:y},{value:sep1},{value:m},{value:sep2},{value:d}] = formatter.formatToParts(now);
+      // ko-KR는 보통 2025. 11. 03. 형식 → 안전하게 0패딩 정규화
+      const yy = y.padStart(4,"0");
+      const mm = m.padStart(2,"0").replace(/\D/g,"");
+      const dd = d.padStart(2,"0").replace(/\D/g,"");
+      return `${yy}-${mm}-${dd}`;
+    }
 
-    // ====== ENV: 날씨/기분/요일 → 규칙 매핑 ======
-    function envRules(w,m,d){
-      // 간단한 규칙 샘플
-      const rules = [];
-      if(w==='비' || w==='습함') rules.push(m=>m.spicy.startsWith('2')||m.spicy.startsWith('3')); // 비/습함엔 얼큰
-      if(w==='추움') rules.push(m=>m.type.includes('국')||m.type==='면' || m.spicy.startsWith('2'));
-      if(w==='더움') rules.push(m=>m.light.includes('가벼움') || m.name.includes('냉'));
-      if(m==='피곤') rules.push(m=>m.light!=='헤비' && m.spicy!=='3-매움');
-      if(m==='축하') rules.push(m=>['초밥','피자','부리또','돈카츠'].includes(m.name));
-      if(['토','일'].includes(d)) rules.push(m=>m.time!=='아침');
-      return rules;
-    }
-    function doEnv(auto=false){
-      const w=$('#e-weather').value, mood=$('#e-mood').value, dow=$('#e-dow').value;
-      const rules = envRules(w,mood,dow);
-      let cands = MENUS.slice();
-      rules.forEach(fn=> cands = cands.filter(fn));
-      if(!cands.length) cands = MENUS; // fallback
-      const chosen = pick(cands);
-      $('#res-env').innerHTML = renderDish(chosen) + `<div class="muted">규칙: ${rules.length||'없음'}</div>`;
-      if(!auto) localStorage.setItem('env', JSON.stringify({w,mood,dow}));
-    }
-    ['#e-weather','#e-mood','#e-dow'].forEach(sel=> $(sel).addEventListener('change', ()=>doEnv(true)) );
-    $('#btnEnv').addEventListener('click',()=>doEnv(false));
-    $('#btnEnvReset').addEventListener('click',()=>{$('#e-weather').selectedIndex=0;$('#e-mood').selectedIndex=0;$('#e-dow').selectedIndex=(new Date().getDay()+6)%7;$('#res-env').innerHTML='<p class="muted">날씨/기분/요일 조합으로 어울리는 메뉴를 추천합니다.</p>';});
-
-    // ====== LEARN: 좋아요/싫어요 가중 학습 ======
-    const LIKE_KEY='likes-v1';
-    function getLikes(){ return JSON.parse(localStorage.getItem(LIKE_KEY)||'{}'); }
-    function setLikes(x){ localStorage.setItem(LIKE_KEY, JSON.stringify(x)); }
-    function scoreLearn(m, likes){
-      let s=0; // 기본
-      const w = likes[m.name]||0; s += w; // 개별 학습
-      // 속성 가중치(예: nation-*, spicy-*)
-      ['nation','spicy','time','light','type'].forEach(k=>{ const key = `${k}:${m[k]}`; s += (likes[key]||0)*0.5; });
-      return s;
-    }
-    function doLearn(auto=false){
-      const likes = getLikes();
-      // softmax 비슷한 가중 랜덤
-      const weighted = MENUS.map(m=>({m, w: Math.exp(scoreLearn(m,likes))}));
-      const sum = weighted.reduce((a,b)=>a+b.w,0);
-      let r = Math.random()*sum; let chosen = weighted[0].m;
-      for(const {m,w} of weighted){ r -= w; if(r<=0){ chosen=m; break; } }
-      $('#res-learn').innerHTML = renderDish(chosen) + `<div class="actions"><button class="btn btn-primary" id="btnLike">👍 좋아요</button><button class="btn btn-ghost" id="btnDislike">👎 싫어요</button></div>`;
-      if(!auto) localStorage.setItem('learn-last', chosen.name);
-      // 버튼 핸들러
-      setTimeout(()=>{
-        const name = chosen.name;
-        $('#btnLike')?.addEventListener('click',()=>{ const L=getLikes(); L[name]=(L[name]||0)+1; ['nation','spicy','time','light','type'].forEach(k=>{const key=`${k}:${chosen[k]}`; L[key]=(L[key]||0)+0.5;}); setLikes(L); doLearn(true); });
-        $('#btnDislike')?.addEventListener('click',()=>{ const L=getLikes(); L[name]=(L[name]||0)-1; ['nation','spicy','time','light','type'].forEach(k=>{const key=`${k}:${chosen[k]}`; L[key]=(L[key]||0)-0.3;}); setLikes(L); doLearn(true); });
-      },0);
-    }
-    $('#btnLearn').addEventListener('click',()=>doLearn(false));
-    $('#btnLearnReset').addEventListener('click',()=>{ localStorage.removeItem(LIKE_KEY); localStorage.removeItem('learn-last'); $('#res-learn').innerHTML=''; });
-
-    // ====== RANDOM: 도전형 ======
-    function doRandom(auto=false){
-      const ex = $$('#r-nation option:checked').map(o=>o.value);
-      const spicy = $('#r-spicy').value; const light=$('#r-light').value; const bold=+$('#r-bold').value; // 0~3
-      let cands = MENUS.filter(m=>!ex.includes(m.nation));
-      if(spicy!=='전체') cands = cands.filter(m=>m.spicy===spicy);
-      if(light!=='전체') cands = cands.filter(m=>m.light===light);
-      // 도전 강도: 평소 선택 적은 nation/type 우선
-      const freq = JSON.parse(localStorage.getItem('random-freq')||'{}');
-      cands = cands.sort((a,b)=> ( (freq[a.nation]||0)-(freq[b.nation]||0) ) * bold + Math.random()-0.5);
-      const chosen = pick(cands.length?cands:MENUS);
-      freq[chosen.nation]=(freq[chosen.nation]||0)+1; localStorage.setItem('random-freq', JSON.stringify(freq));
-      $('#res-random').innerHTML = renderDish(chosen) + `<div class="muted">도전 강도: ${bold} · 제외국가: ${ex.join(',')||'없음'}</div>`;
-      if(!auto) localStorage.setItem('random-last', chosen.name);
-    }
-    $('#btnRandom').addEventListener('click',()=>doRandom(false));
-
-    // ====== VOTE: 사회적 추천형 ======
-    const VOTE_KEY='votes-v1';
-    function getVotes(){ return JSON.parse(localStorage.getItem(VOTE_KEY)||'{}'); }
-    function setVotes(x){ localStorage.setItem(VOTE_KEY, JSON.stringify(x)); }
-    function renderVoteBoard(items){
-      const votes = getVotes();
-      const list = items.map(n=>({ n, c: votes[n]||0 })).sort((a,b)=>b.c-a.c);
-      return list.map(({n,c})=>`<div class="dish"><div class="dish-emoji">${(MENUS.find(m=>m.name===n)||{}).emoji||'🍽️'}</div><div class="dish-main"><div class="dish-name">${n}</div><div class="muted">득표: ${c}</div></div><div class="actions"><button class="btn btn-primary" data-vote="${n}">투표</button></div></div>`).join('');
-    }
-    function doVoteSeed(auto=false){
-      // 후보 5개 랜덤 생성 (중복 없이)
-      const pool = MENUS.slice();
-      const picks = [];
-      while(picks.length<5 && pool.length){ const idx=Math.floor(Math.random()*pool.length); picks.push(pool.splice(idx,1)[0].name); }
-      $('#res-vote').innerHTML = renderVoteBoard(picks);
-      setTimeout(()=>{
-        $$('#res-vote [data-vote]').forEach(btn=> btn.addEventListener('click',()=>{ const v=getVotes(); const key=btn.dataset.vote; v[key]=(v[key]||0)+1; setVotes(v); // 갱신
-          const names = $$('#res-vote [data-vote]').map(b=>b.dataset.vote); $('#res-vote').innerHTML = renderVoteBoard(names);
-        }));
-      },0);
-      if(!auto) localStorage.setItem('vote-cands', JSON.stringify(picks));
-    }
-    $('#btnVoteSeed').addEventListener('click',()=>doVoteSeed(false));
-    $('#btnVoteReset').addEventListener('click',()=>{ localStorage.removeItem(VOTE_KEY); localStorage.removeItem('vote-cands'); $('#res-vote').innerHTML=''; });
-
-    // ====== 데이터 백업(내보내기) ======
-    $('#btnExport').addEventListener('click',()=>{
-      const data = {
-        likes: getLikes(), votes: getVotes(), random: JSON.parse(localStorage.getItem('random-freq')||'{}')
-      };
-      const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'food-preferences-backup.json'; a.click();
-    });
-
-    // ====== 초기화 ======
-    (function init(){
-      // 기본 탭 상태
-      const dow = (new Date().getDay()+6)%7; $('#e-dow').selectedIndex = dow; // 월=0
-      // 기본조건 복원
-      const bSaved = JSON.parse(localStorage.getItem('basic')||'null');
-      if(bSaved){ ['time','spicy','nation'].forEach(k=>{ const el=$('#b-'+k); const idx=[...el.options].findIndex(o=>o.value===bSaved[k]); if(idx>=0) el.selectedIndex=idx; }); }
+    // =========================
+    // A) 오늘 누적 접속자 (중복 방지)
+    // =========================
+    (function trackTodayVisits(){
+      const key = "visited-"+todayKR();
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, "1"); // 새 탭/새 세션당 1회만 카운트
+        const ref = db.ref("stats/" + todayKR() + "/visits");
+        // 트랜잭션으로 원자적 증가
+        ref.transaction(current => (current || 0) + 1);
+      }
+      // 실시간 표시
+      const countRef = db.ref("stats/" + todayKR() + "/visits");
+      countRef.on("value", snap => {
+        document.getElementById("todayCount").textContent = snap.val() || 0;
+      });
     })();
+
+    // =========================
+    // B) 투표 동기화
+    // 경로: votes/<옵션명>: count
+    // =========================
+    const voteButtonsEl = document.getElementById("voteButtons");
+    const voteResultsEl = document.getElementById("voteResults");
+
+    // 버튼 생성
+    VOTE_OPTIONS.forEach(name => {
+      const btn = document.createElement("button");
+      btn.textContent = "투표: " + name;
+      btn.addEventListener("click", () => {
+        const ref = db.ref("votes/" + name + "/count");
+        ref.transaction(current => (current || 0) + 1);
+      });
+      voteButtonsEl.appendChild(btn);
+    });
+
+    // 실시간 결과 표시
+    const votesRef = db.ref("votes");
+    votesRef.on("value", snap => {
+      const data = snap.val() || {};
+      // 정렬(득표 높은 순)
+      const items = Object.entries(data)
+        .map(([name, obj]) => ({ name, count: (obj && obj.count) || 0 }))
+        .sort((a,b) => b.count - a.count);
+      voteResultsEl.innerHTML = items.length
+        ? items.map(v => `<span class="pill">${v.name}: ${v.count}</span>`).join(" ")
+        : "아직 투표 없음";
+    });
   </script>
 </body>
 </html>
