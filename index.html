@@ -1,134 +1,376 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>오늘 뭐 먹지?</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>오늘 뭐 먹지? · 메뉴 추천</title>
+  <meta name="description" content="식사시간대·가벼움·맵기·국가·종류로 필터링하는 깔끔한 메뉴 추천기" />
   <style>
-    body {
-      font-family: "Pretendard", sans-serif;
-      background: #fefefe;
-      text-align: center;
-      padding: 40px;
+    /* ====== Design Tokens ====== */
+    :root{
+      --bg: #f7f7fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --primary: #ef4444;
+      --primary-600:#dc2626;
+      --ring: rgba(239,68,68,.25);
+      --border: #e5e7eb;
+      --chip: #f3f4f6;
+      --shadow: 0 6px 18px rgba(0,0,0,.06);
+      --radius: 16px;
     }
-    h1 { color: #ff6b6b; }
-    select, button {
-      font-size: 1rem;
-      padding: 8px 12px;
-      margin: 6px;
-      border-radius: 8px;
-      border: 1px solid #ccc;
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg: #0b0f14;
+        --card: #121821;
+        --text: #e5e7eb;
+        --muted: #9ca3af;
+        --primary: #f87171;
+        --primary-600:#ef4444;
+        --ring: rgba(248,113,113,.25);
+        --border: #1f2937;
+        --chip: #111827;
+        --shadow: 0 10px 24px rgba(0,0,0,.35);
+      }
     }
-    button {
-      background: #ff6b6b;
-      color: white;
-      cursor: pointer;
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", Helvetica, Arial;
+      background: radial-gradient(1200px 600px at 80% -10%, rgba(239,68,68,.10), transparent 50%),
+                  radial-gradient(1200px 600px at 10% 110%, rgba(59,130,246,.10), transparent 50%),
+                  var(--bg);
+      color:var(--text);
+      -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
     }
-    button:hover {
-      background: #ff4d4d;
-    }
-    #result {
-      margin-top: 20px;
-      font-size: 1.3rem;
-      color: #333;
-      font-weight: bold;
-    }
+
+    .wrap{max-width:980px; margin:40px auto; padding:0 20px}
+
+    header{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:20px}
+    .brand{display:flex; align-items:center; gap:12px}
+    .logo{width:40px; height:40px; border-radius:12px; display:grid; place-items:center; background:#fff; box-shadow:var(--shadow)}
+    .logo span{font-size:22px}
+    h1{font-size: clamp(22px, 3vw, 28px); margin:0; letter-spacing:-.2px}
+    .sub{color:var(--muted); font-size:14px}
+
+    .card{background:var(--card); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow)}
+    .panel{padding:24px}
+
+    .controls{ display:grid; grid-template-columns:1fr; gap:14px}
+    @media(min-width:640px){ .controls{ grid-template-columns:repeat(3,1fr) } }
+    @media(min-width:980px){ .controls{ grid-template-columns:repeat(5,1fr) } }
+
+    label{ display:block; font-size:12px; color:var(--muted); margin-bottom:6px }
+    select{ width:100%; appearance:none; -webkit-appearance:none; padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:linear-gradient(var(--card),var(--card)) padding-box, linear-gradient(180deg,#fff0,#0000000d) border-box; color:var(--text); font-size:15px; transition: box-shadow .2s, border-color .2s}
+    select:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 4px var(--ring) }
+
+    .actions{ display:flex; flex-wrap:wrap; gap:10px; margin-top:12px }
+    .btn{ padding:12px 16px; border-radius:12px; border:1px solid transparent; cursor:pointer; font-weight:600; font-size:15px }
+    .btn-primary{ background:var(--primary); color:#fff }
+    .btn-primary:hover{ background:var(--primary-600) }
+    .btn-ghost{ background:transparent; border-color:var(--border); color:var(--text) }
+    .btn-ghost:hover{ border-color:var(--muted) }
+
+    .result{ margin-top:18px; display:grid; gap:14px }
+
+    .dish{ display:flex; align-items:center; gap:16px; padding:16px; border:1px solid var(--border); border-radius:14px }
+    .dish-emoji{ width:56px; height:56px; border-radius:14px; display:grid; place-items:center; font-size:28px; background:var(--chip) }
+    .dish-main{ flex:1 }
+    .dish-name{ font-size:18px; font-weight:800; letter-spacing:-.2px; margin:0 0 4px }
+    .chips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px }
+    .chip{ font-size:12px; padding:6px 10px; background:var(--chip); border-radius:999px; color:var(--muted); border:1px solid var(--border) }
+
+    .muted{ color:var(--muted); font-size:14px }
+
+    footer{ text-align:center; color:var(--muted); font-size:12px; padding:22px 0 40px }
   </style>
 </head>
 <body>
-  <h1>🍱 오늘 뭐 먹지?</h1>
+  <main class="wrap">
+    <header>
+      <div class="brand">
+        <div class="logo" aria-hidden="true"><span>🍱</span></div>
+        <div>
+          <h1>오늘 뭐 먹지?</h1>
+          <div class="sub">옵션 하나만 바꿔도 자동 초기화·재추천</div>
+        </div>
+      </div>
+      <button class="btn btn-ghost" id="randomize" title="옵션을 랜덤으로 섞기" aria-label="옵션 랜덤">🔀 섞기</button>
+    </header>
 
-  <div>
-    <label>식사시간대:</label>
-    <select id="time">
-      <option>아침</option>
-      <option>점심</option>
-      <option>저녁</option>
-    </select>
-  </div>
+    <section class="card panel" aria-labelledby="filterTitle">
+      <h2 id="filterTitle" class="visually-hidden" style="position:absolute;left:-9999px">필터 선택</h2>
+      <div class="controls" id="controls">
+        <div>
+          <label for="time">식사 시간대</label>
+          <select id="time">
+            <option>아침</option>
+            <option selected>점심</option>
+            <option>저녁</option>
+            <option>야식</option>
+            <option>간식</option>
+          </select>
+        </div>
+        <div>
+          <label for="light">가벼움 정도</label>
+          <select id="light">
+            <option>매우 가벼움</option>
+            <option selected>가벼움</option>
+            <option>보통</option>
+            <option>든든함</option>
+            <option>헤비</option>
+          </select>
+        </div>
+        <div>
+          <label for="spicy">맵기</label>
+          <select id="spicy">
+            <option>0-안매움</option>
+            <option selected>1-약간</option>
+            <option>2-중간</option>
+            <option>3-매움</option>
+          </select>
+        </div>
+        <div>
+          <label for="nation">국가별</label>
+          <select id="nation">
+            <option selected>한식</option>
+            <option>중식</option>
+            <option>일식</option>
+            <option>양식</option>
+            <option>동남아</option>
+            <option>인도</option>
+            <option>멕시코</option>
+            <option>기타</option>
+          </select>
+        </div>
+        <div>
+          <label for="type">종류</label>
+          <select id="type">
+            <option selected>밥</option>
+            <option>면</option>
+            <option>빵/버거</option>
+            <option>국·탕·찌개</option>
+            <option>분식</option>
+            <option>샐러드/라이트</option>
+            <option>디저트</option>
+          </select>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" id="btnRecommend">추천받기 🍽️</button>
+        <button class="btn btn-ghost" id="btnClear">필터 초기화</button>
+      </div>
 
-  <div>
-    <label>가벼움 정도:</label>
-    <select id="lightness">
-      <option>가벼움</option>
-      <option>보통</option>
-      <option>든든함</option>
-    </select>
-  </div>
+      <div class="result" id="result" aria-live="polite">
+        <p class="muted">옵션을 선택하거나 바꾸면 자동으로 초기화 후 재추천됩니다.</p>
+      </div>
+    </section>
 
-  <div>
-    <label>맵기:</label>
-    <select id="spicy">
-      <option>안매움</option>
-      <option>보통</option>
-      <option>매움</option>
-    </select>
-  </div>
-
-  <div>
-    <label>국가별:</label>
-    <select id="nation">
-      <option>한식</option>
-      <option>중식</option>
-      <option>양식</option>
-      <option>일식</option>
-      <option>기타</option>
-    </select>
-  </div>
-
-  <div>
-    <label>종류:</label>
-    <select id="type">
-      <option>밥</option>
-      <option>면</option>
-      <option>기타</option>
-    </select>
-  </div>
-
-  <br>
-  <button onclick="recommendMenu()">추천받기 🍽️</button>
-
-  <div id="result"></div>
+    <footer>
+      Made with ❤ · GitHub Pages
+    </footer>
+  </main>
 
   <script>
-    // 메뉴 데이터 예시
-    const menus = [
-      { name: "김치찌개", time: "점심", light: "보통", spicy: "매움", nation: "한식", type: "밥" },
-      { name: "비빔밥", time: "점심", light: "보통", spicy: "보통", nation: "한식", type: "밥" },
-      { name: "샐러드", time: "아침", light: "가벼움", spicy: "안매움", nation: "양식", type: "기타" },
-      { name: "파스타", time: "저녁", light: "보통", spicy: "안매움", nation: "양식", type: "면" },
-      { name: "짜장면", time: "점심", light: "보통", spicy: "안매움", nation: "중식", type: "면" },
-      { name: "짬뽕", time: "점심", light: "보통", spicy: "매움", nation: "중식", type: "면" },
-      { name: "초밥", time: "저녁", light: "가벼움", spicy: "안매움", nation: "일식", type: "밥" },
-      { name: "돈까스", time: "점심", light: "든든함", spicy: "보통", nation: "일식", type: "밥" },
-      { name: "삼겹살", time: "저녁", light: "든든함", spicy: "보통", nation: "한식", type: "기타" },
-      { name: "라면", time: "아침", light: "보통", spicy: "매움", nation: "한식", type: "면" },
-      { name: "샌드위치", time: "아침", light: "가벼움", spicy: "안매움", nation: "양식", type: "기타" },
+    // ====== 기본값 정의 (초기화 시 참고) ======
+    const DEFAULTS = {
+      time: '점심',
+      light: '가벼움',
+      spicy: '1-약간',
+      nation: '한식',
+      type: '밥'
+    };
+
+    // ====== 메뉴 데이터 확장 ======
+    const MENUS = [
+      // 한식
+      { name:'비빔밥', emoji:'🥗', time:'점심', light:'보통', spicy:'1-약간', nation:'한식', type:'밥' },
+      { name:'김치찌개', emoji:'🥘', time:'저녁', light:'보통', spicy:'3-매움', nation:'한식', type:'국·탕·찌개' },
+      { name:'된장찌개', emoji:'🍲', time:'저녁', light:'보통', spicy:'0-안매움', nation:'한식', type:'국·탕·찌개' },
+      { name:'제육볶음', emoji:'🍖', time:'점심', light:'든든함', spicy:'2-중간', nation:'한식', type:'밥' },
+      { name:'갈비탕', emoji:'🥣', time:'저녁', light:'든든함', spicy:'0-안매움', nation:'한식', type:'국·탕·찌개' },
+      { name:'삼계탕', emoji:'🐔', time:'점심', light:'든든함', spicy:'0-안매움', nation:'한식', type:'국·탕·찌개' },
+      { name:'김밥', emoji:'🍙', time:'아침', light:'가벼움', spicy:'0-안매움', nation:'한식', type:'분식' },
+      { name:'떡볶이', emoji:'🌶️', time:'간식', light:'보통', spicy:'2-중간', nation:'한식', type:'분식' },
+      { name:'라면', emoji:'🍜', time:'야식', light:'보통', spicy:'3-매움', nation:'한식', type:'면' },
+      { name:'물냉면', emoji:'🥶', time:'점심', light:'가벼움', spicy:'0-안매움', nation:'한식', type:'면' },
+      { name:'비빔냉면', emoji:'🥵', time:'점심', light:'가벼움', spicy:'2-중간', nation:'한식', type:'면' },
+
+      // 중식
+      { name:'짜장면', emoji:'🍝', time:'점심', light:'보통', spicy:'0-안매움', nation:'중식', type:'면' },
+      { name:'짬뽕', emoji:'🔥', time:'점심', light:'보통', spicy:'3-매움', nation:'중식', type:'면' },
+      { name:'마파두부', emoji:'🍲', time:'저녁', light:'가벼움', spicy:'2-중간', nation:'중식', type:'기타' },
+      { name:'꿔바로우', emoji:'🥩', time:'저녁', light:'헤비', spicy:'1-약간', nation:'중식', type:'기타' },
+
+      // 일식
+      { name:'초밥', emoji:'🍣', time:'저녁', light:'매우 가벼움', spicy:'0-안매움', nation:'일식', type:'밥' },
+      { name:'돈카츠', emoji:'🍱', time:'점심', light:'든든함', spicy:'1-약간', nation:'일식', type:'밥' },
+      { name:'우동', emoji:'🥢', time:'아침', light:'가벼움', spicy:'0-안매움', nation:'일식', type:'면' },
+      { name:'규동', emoji:'🍚', time:'저녁', light:'보통', spicy:'0-안매움', nation:'일식', type:'밥' },
+
+      // 양식
+      { name:'마르게리타 피자', emoji:'🍕', time:'저녁', light:'보통', spicy:'0-안매움', nation:'양식', type:'빵/버거' },
+      { name:'볼로네제 파스타', emoji:'🍝', time:'저녁', light:'보통', spicy:'0-안매움', nation:'양식', type:'면' },
+      { name:'치즈버거', emoji:'🍔', time:'점심', light:'헤비', spicy:'1-약간', nation:'양식', type:'빵/버거' },
+      { name:'시저샐러드', emoji:'🥗', time:'아침', light:'매우 가벼움', spicy:'0-안매움', nation:'양식', type:'샐러드/라이트' },
+
+      // 동남아
+      { name:'팟타이', emoji:'🍤', time:'저녁', light:'보통', spicy:'1-약간', nation:'동남아', type:'면' },
+      { name:'쌀국수', emoji:'🍜', time:'점심', light:'가벼움', spicy:'1-약간', nation:'동남아', type:'면' },
+      { name:'나시고렝', emoji:'🍚', time:'저녁', light:'보통', spicy:'2-중간', nation:'동남아', type:'밥' },
+
+      // 인도
+      { name:'버터치킨 커리', emoji:'🍛', time:'저녁', light:'보통', spicy:'1-약간', nation:'인도', type:'밥' },
+      { name:'팔락 파니르', emoji:'🥬', time:'점심', light:'가벼움', spicy:'1-약간', nation:'인도', type:'밥' },
+      { name:'치킨 티카', emoji:'🍗', time:'저녁', light:'보통', spicy:'2-중간', nation:'인도', type:'샐러드/라이트' },
+
+      // 멕시코
+      { name:'타코', emoji:'🌮', time:'점심', light:'가벼움', spicy:'1-약간', nation:'멕시코', type:'빵/버거' },
+      { name:'부리또', emoji:'🌯', time:'저녁', light:'보통', spicy:'2-중간', nation:'멕시코', type:'빵/버거' },
+      { name:'퀘사디야', emoji:'🫓', time:'간식', light:'보통', spicy:'1-약간', nation:'멕시코', type:'빵/버거' },
+
+      // 기타/라이트/디저트
+      { name:'연어포케', emoji:'🐟', time:'점심', light:'매우 가벼움', spicy:'0-안매움', nation:'기타', type:'샐러드/라이트' },
+      { name:'요거트 볼', emoji:'🥣', time:'아침', light:'매우 가벼움', spicy:'0-안매움', nation:'기타', type:'디저트' },
+      { name:'크로플', emoji:'🧇', time:'간식', light:'보통', spicy:'0-안매움', nation:'기타', type:'디저트' }
     ];
 
-    function recommendMenu() {
-      const time = document.getElementById("time").value;
-      const lightness = document.getElementById("lightness").value;
-      const spicy = document.getElementById("spicy").value;
-      const nation = document.getElementById("nation").value;
-      const type = document.getElementById("type").value;
+    // ====== 유틸 ======
+    const $ = sel => document.querySelector(sel);
+    const pick = arr => arr[Math.floor(Math.random()*arr.length)];
 
-      const filtered = menus.filter(m =>
-        m.time === time &&
-        m.light === lightness &&
-        m.spicy === spicy &&
-        m.nation === nation &&
-        m.type === type
-      );
+    function getFilters(){
+      return {
+        time:  $('#time').value,
+        light: $('#light').value,
+        spicy: $('#spicy').value,
+        nation:$('#nation').value,
+        type:  $('#type').value,
+      };
+    }
 
-      const result = document.getElementById("result");
-      if (filtered.length > 0) {
-        const pick = filtered[Math.floor(Math.random() * filtered.length)];
-        result.textContent = `추천 메뉴는 🍽️ ${pick.name} 입니다!`;
-      } else {
-        result.textContent = "조건에 맞는 메뉴가 없어요 😅";
+    function setDefaults(){
+      // 모든 셀렉트를 기본값으로 초기화
+      const map = {
+        time: DEFAULTS.time,
+        light: DEFAULTS.light,
+        spicy: DEFAULTS.spicy,
+        nation: DEFAULTS.nation,
+        type: DEFAULTS.type
+      };
+      Object.entries(map).forEach(([id,val])=>{
+        const el = document.getElementById(id);
+        const idx = [...el.options].findIndex(o=>o.value===val);
+        if(idx>=0) el.selectedIndex = idx;
+      });
+    }
+
+    function scoreMenu(menu, f){
+      let s = 0;
+      if(menu.time===f.time) s++;
+      if(menu.light===f.light) s++;
+      if(menu.spicy===f.spicy) s++;
+      if(menu.nation===f.nation) s++;
+      if(menu.type===f.type) s++;
+      return s;
+    }
+
+    function filterMenus(f){
+      for(let need=5; need>=3; need--){
+        const group = MENUS.filter(m => scoreMenu(m,f)===need);
+        if(group.length) return group;
+      }
+      const relaxed = MENUS.filter(m => scoreMenu(m,f)>=2);
+      return relaxed.length ? relaxed : MENUS;
+    }
+
+    function chip(text){
+      return `<span class="chip">${text}</span>`;
+    }
+
+    function renderDish(m){
+      return `
+        <article class="dish" role="group" aria-label="추천 메뉴">
+          <div class="dish-emoji" aria-hidden="true">${m.emoji || '🍽️'}</div>
+          <div class="dish-main">
+            <h3 class="dish-name">${m.name}</h3>
+            <div class="chips">
+              ${chip(m.time)} ${chip(m.light)} ${chip(m.spicy)} ${chip(m.nation)} ${chip(m.type)}
+            </div>
+          </div>
+          <button class="btn btn-ghost" aria-label="다시 추천" onclick="recommend(true)">🔁</button>
+        </article>`;
+    }
+
+    function recommend(isReroll=false){
+      const filters = getFilters();
+      localStorage.setItem('menuFilters', JSON.stringify(filters));
+
+      const candidates = filterMenus(filters);
+      const chosen = pick(candidates);
+      const alt = candidates.filter(x => x!==chosen);
+
+      const $res = $('#result');
+      $res.innerHTML = renderDish(chosen) +
+        (alt.length ? `<div class="muted">유사 추천: ${alt.slice(0,3).map(a=>a.name).join(' · ')}</div>` : '');
+
+      if(!isReroll){
+        $res.setAttribute('aria-live','polite');
       }
     }
+
+    function clearFilters(){
+      setDefaults();
+      localStorage.removeItem('menuFilters');
+      $('#result').innerHTML = '<p class="muted">옵션을 선택하거나 바꾸면 자동으로 초기화 후 재추천됩니다.</p>';
+    }
+
+    function randomizeFilters(){
+      const selects = document.querySelectorAll('select');
+      selects.forEach(s => {
+        s.selectedIndex = Math.floor(Math.random()*s.options.length);
+      });
+    }
+
+    // ====== 핵심 요구: "아무거나 하나라도 변경하면 필터 초기화하고 재적용" ======
+    function onAnyChange(e){
+      const changed = e.target; // 바뀐 셀렉트
+      const newVal = changed.value;
+      // 1) 전체 기본값으로 초기화
+      setDefaults();
+      // 2) 방금 바꾼 셀렉트만 사용자가 선택한 값으로 설정
+      const idx = [...changed.options].findIndex(o=>o.value===newVal);
+      if(idx>=0) changed.selectedIndex = idx;
+      // 3) 바로 추천 실행
+      recommend(false);
+    }
+
+    // 이벤트 바인딩
+    $('#btnRecommend').addEventListener('click', () => recommend(false));
+    $('#btnClear').addEventListener('click', clearFilters);
+    $('#randomize').addEventListener('click', () => { randomizeFilters(); recommend(false); });
+
+    // 모든 셀렉트에 change 이벤트 연결
+    document.querySelectorAll('select').forEach(sel => sel.addEventListener('change', onAnyChange));
+
+    // 초기: 저장된 값 복원(있으면), 없으면 기본값 세팅
+    (function init(){
+      const saved = localStorage.getItem('menuFilters');
+      if(saved){
+        try{
+          const f = JSON.parse(saved);
+          ['time','light','spicy','nation','type'].forEach(k=>{
+            const el = document.getElementById(k);
+            const idx = [...el.options].findIndex(o=>o.value===f[k]);
+            if(idx>=0) el.selectedIndex = idx;
+          });
+        }catch(_){ setDefaults(); }
+      }else{
+        setDefaults();
+      }
+    })();
   </script>
 </body>
 </html>
