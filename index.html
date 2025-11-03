@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>오늘 뭐 먹지?</title>
+  <style>
+    body {
+      font-family: "Pretendard", sans-serif;
+      background: #fefefe;
+      text-align: center;
+      padding: 40px;
+    }
+    h1 { color: #ff6b6b; }
+    select, button {
+      font-size: 1rem;
+      padding: 8px 12px;
+      margin: 6px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+    }
+    button {
+      background: #ff6b6b;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #ff4d4d;
+    }
+    #result {
+      margin-top: 20px;
+      font-size: 1.3rem;
+      color: #333;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>🍱 오늘 뭐 먹지?</h1>
+
+  <div>
+    <label>식사시간대:</label>
+    <select id="time">
+      <option>아침</option>
+      <option>점심</option>
+      <option>저녁</option>
+    </select>
+  </div>
+
+  <div>
+    <label>가벼움 정도:</label>
+    <select id="lightness">
+      <option>가벼움</option>
+      <option>보통</option>
+      <option>든든함</option>
+    </select>
+  </div>
+
+  <div>
+    <label>맵기:</label>
+    <select id="spicy">
+      <option>안매움</option>
+      <option>보통</option>
+      <option>매움</option>
+    </select>
+  </div>
+
+  <div>
+    <label>국가별:</label>
+    <select id="nation">
+      <option>한식</option>
+      <option>중식</option>
+      <option>양식</option>
+      <option>일식</option>
+      <option>기타</option>
+    </select>
+  </div>
+
+  <div>
+    <label>종류:</label>
+    <select id="type">
+      <option>밥</option>
+      <option>면</option>
+      <option>기타</option>
+    </select>
+  </div>
+
+  <br>
+  <button onclick="recommendMenu()">추천받기 🍽️</button>
+
+  <div id="result"></div>
+
+  <script>
+    // 메뉴 데이터 예시
+    const menus = [
+      { name: "김치찌개", time: "점심", light: "보통", spicy: "매움", nation: "한식", type: "밥" },
+      { name: "비빔밥", time: "점심", light: "보통", spicy: "보통", nation: "한식", type: "밥" },
+      { name: "샐러드", time: "아침", light: "가벼움", spicy: "안매움", nation: "양식", type: "기타" },
+      { name: "파스타", time: "저녁", light: "보통", spicy: "안매움", nation: "양식", type: "면" },
+      { name: "짜장면", time: "점심", light: "보통", spicy: "안매움", nation: "중식", type: "면" },
+      { name: "짬뽕", time: "점심", light: "보통", spicy: "매움", nation: "중식", type: "면" },
+      { name: "초밥", time: "저녁", light: "가벼움", spicy: "안매움", nation: "일식", type: "밥" },
+      { name: "돈까스", time: "점심", light: "든든함", spicy: "보통", nation: "일식", type: "밥" },
+      { name: "삼겹살", time: "저녁", light: "든든함", spicy: "보통", nation: "한식", type: "기타" },
+      { name: "라면", time: "아침", light: "보통", spicy: "매움", nation: "한식", type: "면" },
+      { name: "샌드위치", time: "아침", light: "가벼움", spicy: "안매움", nation: "양식", type: "기타" },
+    ];
+
+    function recommendMenu() {
+      const time = document.getElementById("time").value;
+      const lightness = document.getElementById("lightness").value;
+      const spicy = document.getElementById("spicy").value;
+      const nation = document.getElementById("nation").value;
+      const type = document.getElementById("type").value;
+
+      const filtered = menus.filter(m =>
+        m.time === time &&
+        m.light === lightness &&
+        m.spicy === spicy &&
+        m.nation === nation &&
+        m.type === type
+      );
+
+      const result = document.getElementById("result");
+      if (filtered.length > 0) {
+        const pick = filtered[Math.floor(Math.random() * filtered.length)];
+        result.textContent = `추천 메뉴는 🍽️ ${pick.name} 입니다!`;
+      } else {
+        result.textContent = "조건에 맞는 메뉴가 없어요 😅";
+      }
+    }
+  </script>
+</body>
+</html>
