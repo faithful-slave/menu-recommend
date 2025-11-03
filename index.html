@@ -1,257 +1,346 @@
-<!DOCTYPE html>
+# Project: 음식추천기 (국가/종류/맵기 필터) + 실시간 방문수 + 랜덤 + 좋아요(아이피당 1회)
+# Stack: Cloudflare Pages (정적) + Pages Functions (서버리스 API) + Cloudflare D1 (SQLite)
+# 폴더 구조
+# .
+# ├── index.html                # 단일 페이지 UI (TailwindCDN)
+# ├── schema.sql                # D1 테이블/인덱스 스키마
+# ├── functions/
+# │   └── api/
+# │       ├── visit.js         # 오늘 방문 기록 (IP당 1회) + 합계 반환
+# │       ├── visit-count.js   # 오늘 방문수 조회
+# │       ├── like.js          # item 좋아요 (IP당 1회)
+# │       └── like-count.js    # item 좋아요 합계 조회
+# ├── wrangler.toml             # D1 바인딩 설정 예시
+# └── README.md                 # 배포/마이그레이션 가이드
+
+
+############################
+# index.html
+############################
+<!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>오늘 뭐 먹지 · 음식 추천 (필터+맵기+방문자+랜덤)</title>
-  <style>
-    :root{
-      --bg:#0a0c11; --panel:#101622; --text:#eaf0fb; --muted:#a5b4ce;
-      --brand:#7aa2ff; --brand-2:#b58cff; --spicy:#ff7a7a; --radius:20px;
-      --shadow:0 10px 28px rgba(0,0,0,.35); --shadow-soft:0 2px 12px rgba(0,0,0,.22);
-      --ring: 0 0 0 1px rgba(255,255,255,.09), 0 8px 24px rgba(0,0,0,.30);
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{margin:0;background:radial-gradient(1200px 600px at 10% -10%, rgba(124,138,255,.14), transparent),radial-gradient(1000px 500px at 90% -20%, rgba(122,162,255,.12), transparent),linear-gradient(180deg,#0a0c11,#0a0c11 35%,#0b1020 100%);color:var(--text);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans KR",Apple SD Gothic Neo,sans-serif;display:flex;flex-direction:column;gap:22px;padding:28px}
-    header{max-width:1180px;margin:0 auto;padding:8px 0 0}
-    .hero{display:grid;grid-template-columns:1fr;gap:10px;text-align:center}
-    .title{font-size:clamp(26px,4.2vw,48px);font-weight:900;letter-spacing:-.02em}
-    .subtitle{color:var(--muted);font-size:clamp(14px,2vw,18px)}
-
-    .stats{max-width:1180px;margin:6px auto 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-    .stat{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:12px 14px;box-shadow:var(--shadow-soft);display:flex;align-items:center;gap:12px}
-    .stat .icon{font-size:22px}
-    .stat .label{color:var(--muted);font-size:12px;letter-spacing:.02em}
-    .stat .value{font-size:18px;font-weight:800}
-
-    .filters{position:sticky;top:10px;z-index:5}
-    .filters .panel{max-width:1180px;margin:0 auto;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.10);border-radius:calc(var(--radius) + 4px);box-shadow:var(--ring);padding:12px 12px 6px}
-    .row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:6px 8px}
-    .row label.group{color:var(--muted);font-weight:800;letter-spacing:.02em;margin-right:4px}
-    .visually-hidden{position:absolute!important;clip:rect(1px,1px,1px,1px);width:1px;height:1px;overflow:hidden}
-    .chip{--bd:rgba(255,255,255,.14);display:inline-flex;align-items:center;gap:8px;padding:9px 13px;border:1px solid var(--bd);border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03));cursor:pointer;user-select:none;transition:.2s ease;box-shadow:var(--shadow-soft);font-weight:700;font-size:14px}
-    .chip:hover{transform:translateY(-1px)}
-    input[type="radio"]:checked + label.chip{--bd:transparent;background:linear-gradient(180deg,rgba(122,162,255,.28),rgba(122,162,255,.10));color:#fff;box-shadow:0 4px 14px rgba(122,162,255,.35),inset 0 0 0 1px rgba(255,255,255,.12)}
-    .actions{margin-left:auto;display:flex;gap:8px}
-    .btn{border:none;border-radius:999px;padding:10px 14px;font-weight:800;color:#fff;background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.05));border:1px solid rgba(255,255,255,.14);box-shadow:var(--shadow-soft);cursor:pointer}
-    .btn:hover{filter:brightness(1.06)}
-
-    .grid{max-width:1180px;margin:14px auto 80px;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px}
-    .card{background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.015));border:1px solid rgba(255,255,255,.10);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);position:relative;overflow:hidden}
-    .card .badge{position:absolute;top:10px;right:10px;font-size:12px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:var(--muted)}
-    .card h3{margin:6px 0 6px;font-size:18px;letter-spacing:-.02em}
-    .meta{color:var(--muted);font-size:13px}
-    .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-    .tag{font-size:12px;padding:5px 8px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08)}
-    .tag.spicy{border-color:rgba(255,98,98,.35);color:#ffdada;background:rgba(255,98,98,.12)}
-    .tag.light{border-color:rgba(137,209,133,.35);color:#e6ffe6;background:rgba(137,209,133,.12)}
-
-    /* Pick animation */
-    .picked{outline:2px solid var(--brand);box-shadow:0 0 0 3px rgba(122,162,255,.35)}
-    .picked::after{content:"추천!";position:absolute;top:8px;left:8px;background:rgba(122,162,255,.25);border:1px solid rgba(255,255,255,.2);padding:4px 8px;border-radius:999px;font-size:12px}
-
-    /* CSS filtering */
-    .card{display:block}
-    .page:has(#c-korean:checked) .card:not(.cuisine-korean){display:none}
-    .page:has(#c-western:checked) .card:not(.cuisine-western){display:none}
-    .page:has(#c-japanese:checked) .card:not(.cuisine-japanese){display:none}
-    .page:has(#c-chinese:checked) .card:not(.cuisine-chinese){display:none}
-    .page:has(#c-indian:checked) .card:not(.cuisine-indian){display:none}
-    .page:has(#c-etc:checked) .card:not(.cuisine-etc){display:none}
-    .page:has(#c-all:checked) .card{display:block}
-
-    .page:has(#t-rice:checked) .card:not(.type-rice){display:none}
-    .page:has(#t-noodle:checked) .card:not(.type-noodle){display:none}
-    .page:has(#t-salad:checked) .card:not(.type-salad){display:none}
-    .page:has(#t-porridge:checked) .card:not(.type-porridge){display:none}
-    .page:has(#t-grill:checked) .card:not(.type-grill){display:none}
-    .page:has(#t-stew:checked) .card:not(.type-stew){display:none}
-    .page:has(#t-burger:checked) .card:not(.type-burger){display:none}
-    .page:has(#t-soup:checked) .card:not(.type-soup){display:none}
-    .page:has(#t-dimsum:checked) .card:not(.type-dimsum){display:none}
-    .page:has(#t-etc:checked) .card:not(.type-etc){display:none}
-    .page:has(#t-all:checked) .card{display:block}
-
-    .page:has(#s-0:checked) .card:not(.spice-0){display:none}
-    .page:has(#s-1:checked) .card:not(.spice-1){display:none}
-    .page:has(#s-2:checked) .card:not(.spice-2){display:none}
-    .page:has(#s-3:checked) .card:not(.spice-3){display:none}
-    .page:has(#s-all:checked) .card{display:block}
-
-    footer{max-width:1180px;margin:10px auto 0;color:var(--muted);font-size:13px;text-align:center}
-  </style>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>음식추천기</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="page">
-  <header>
-    <div class="hero">
-      <div class="title">오늘 뭐 먹지? 🍚🍜🥗</div>
-      <div class="subtitle">나라·종류·맵기 3단 필터 + 랜덤 추첨으로 바로 결정!</div>
-    </div>
-  </header>
+<body class="min-h-screen bg-slate-50 text-slate-900">
+  <div class="max-w-5xl mx-auto p-6">
+    <header class="flex items-center justify-between">
+      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">🍜 음식추천기</h1>
+      <div class="text-sm sm:text-base">오늘 방문수: <span id="visitCount" class="font-semibold">-</span></div>
+    </header>
 
-  <section class="stats" aria-label="방문자 통계">
-    <div class="stat"><div class="icon">👥</div><div><div class="label">이 브라우저 누적 방문</div><div class="value" id="stat-total">-</div></div></div>
-    <div class="stat"><div class="icon">📅</div><div><div class="label">오늘 방문(이 브라우저)</div><div class="value" id="stat-today">-</div></div></div>
-    <div class="stat"><div class="icon">⚙️</div><div><div class="label">현재 적용 필터</div><div class="value" id="stat-filter">전체</div></div></div>
-    <div class="stat"><div class="icon">🎯</div><div><div class="label">랜덤 추천</div><div class="value" id="stat-random">-</div></div></div>
-  </section>
-
-  <section class="filters">
-    <div class="panel">
-      <div class="row" role="group" aria-label="나라별">
-        <label class="group">나라별</label>
-        <input class="visually-hidden" type="radio" name="cuisine" id="c-all" checked><label class="chip" for="c-all">전체</label>
-        <input class="visually-hidden" type="radio" name="cuisine" id="c-korean"><label class="chip" for="c-korean">한식</label>
-        <input class="visually-hidden" type="radio" name="cuisine" id="c-western"><label class="chip" for="c-western">양식</label>
-        <input class="visually-hidden" type="radio" name="cuisine" id="c-japanese"><label class="chip" for="c-japanese">일식</label>
-        <input class="visually-hidden" type="radio" name="cuisine" id="c-chinese"><label class="chip" for="c-chinese">중식</label>
-        <input class="visually-hidden" type="radio" name="cuisine" id="c-indian"><label class="chip" for="c-indian">인도</label>
-        <input class="visually-hidden" type="radio" name="cuisine" id="c-etc"><label class="chip" for="c-etc">기타</label>
-        <div class="actions">
-          <button class="btn" type="button" id="btn-random">🎲 랜덤 추첨</button>
-          <button class="btn" type="button" id="btn-reset">초기화</button>
+    <section class="mt-6 bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+      <div class="grid sm:grid-cols-4 gap-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">나라</label>
+          <select id="country" class="w-full rounded-xl border-slate-300 focus:ring-2 focus:ring-slate-400">
+            <option value="">전체</option>
+            <option>한국</option>
+            <option>일본</option>
+            <option>중국</option>
+            <option>태국</option>
+            <option>인도</option>
+            <option>이탈리아</option>
+            <option>멕시코</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">종류</label>
+          <select id="category" class="w-full rounded-xl border-slate-300 focus:ring-2 focus:ring-slate-400">
+            <option value="">전체</option>
+            <option>면</option>
+            <option>밥</option>
+            <option>찌개/탕</option>
+            <option>구이/볶음</option>
+            <option>디저트</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">맵기</label>
+          <select id="spicy" class="w-full rounded-xl border-slate-300 focus:ring-2 focus:ring-slate-400">
+            <option value="">전체</option>
+            <option value="0">0 — 안매움</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5 — 아주매움</option>
+          </select>
+        </div>
+        <div class="flex items-end gap-2">
+          <button id="btnRecommend" class="flex-1 rounded-xl bg-slate-900 text-white py-2.5 font-semibold shadow hover:opacity-90">추천하기</button>
+          <button id="btnRandom" class="rounded-xl bg-slate-200 text-slate-900 py-2.5 px-3 font-semibold hover:bg-slate-300">랜덤</button>
         </div>
       </div>
+    </section>
 
-      <div class="row" role="group" aria-label="종류별">
-        <label class="group">종류별</label>
-        <input class="visually-hidden" type="radio" name="type" id="t-all" checked><label class="chip" for="t-all">전체</label>
-        <input class="visually-hidden" type="radio" name="type" id="t-rice"><label class="chip" for="t-rice">밥</label>
-        <input class="visually-hidden" type="radio" name="type" id="t-noodle"><label class="chip" for="t-noodle">면</label>
-        <input class="visually-hidden" type="radio" name="type" id="t-salad"><label class="chip" for="t-salad">샐러드</label>
-        <input class="visually-hidden" type="radio" name="type" id="t-porridge"><label class="chip" for="t-porridge">죽/리조또</label>
-        <input class="visually-hidden" type="radio" name="type" id="t-grill"><label class="chip" for="t-grill">구이/그릴</label>
-        <input class="visually-hidden" type="radio" name="type" id="t-stew"><label class="chip" for="t-stew">국/찌개/탕</label>
-        <input class="visually-hidden" type="radio" name="type" id="t-burger"><label class="chip" for="t-burger">버거/샌드위치</label>
-        <input class="visually-hidden" type="radio" name="type" id="t-soup"><label class="chip" for="t-soup">수프</label>
-        <input class="visually-hidden" type="radio" name="type" id="t-dimsum"><label class="chip" for="t-dimsum">딤섬</label>
-        <input class="visually-hidden" type="radio" name="type" id="t-etc"><label class="chip" for="t-etc">기타</label>
+    <section id="result" class="mt-6 hidden">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex items-center gap-5">
+        <div class="flex-1">
+          <div class="text-xs uppercase tracking-wider text-slate-500">추천메뉴</div>
+          <h2 id="itemName" class="mt-1 text-xl sm:text-2xl font-bold"></h2>
+          <p id="itemMeta" class="mt-1 text-slate-600"></p>
+          <div class="mt-3 flex items-center gap-3">
+            <button id="btnLike" class="rounded-xl bg-rose-600 text-white px-4 py-2 font-semibold hover:opacity-90">좋아요</button>
+            <span class="text-sm">좋아요 <span id="likeCount" class="font-semibold">0</span></span>
+          </div>
+        </div>
+        <div class="shrink-0">
+          <div id="spicyBadge" class="rounded-xl px-3 py-2 text-sm font-semibold bg-orange-100 text-orange-700">맵기 -</div>
+        </div>
       </div>
+    </section>
 
-      <div class="row" role="group" aria-label="맵기">
-        <label class="group">맵기</label>
-        <input class="visually-hidden" type="radio" name="spice" id="s-all" checked><label class="chip" for="s-all">전체</label>
-        <input class="visually-hidden" type="radio" name="spice" id="s-0"><label class="chip" for="s-0">0 🌿</label>
-        <input class="visually-hidden" type="radio" name="spice" id="s-1"><label class="chip" for="s-1">1 🌶️</label>
-        <input class="visually-hidden" type="radio" name="spice" id="s-2"><label class="chip" for="s-2">2 🌶️🌶️</label>
-        <input class="visually-hidden" type="radio" name="spice" id="s-3"><label class="chip" for="s-3">3 🌶️🌶️🌶️</label>
-      </div>
-    </div>
-  </section>
+    <footer class="mt-10 text-center text-xs text-slate-500">© 음식추천기 — Cloudflare Pages + D1 Demo</footer>
+  </div>
 
-  <main class="grid">
-    <!-- ===== 훨씬 더 많은 메뉴 카드 (각각 cuisine/type/spice 클래스 지정) ===== -->
-    <!-- Korean -->
-    <article class="card cuisine-korean type-rice spice-1"><span class="badge">한식 · 밥 · 1</span><h3>비빔밥</h3><div class="meta">채소 듬뿍, 고추장 비빔</div><div class="tags"><span class="tag light">가벼움</span><span class="tag spicy">매콤</span></div></article>
-    <article class="card cuisine-korean type-rice spice-0"><span class="badge">한식 · 밥 · 0</span><h3>불고기 덮밥</h3><div class="meta">간장 베이스, 달짝</div><div class="tags"><span class="tag">든든</span></div></article>
-    <article class="card cuisine-korean type-noodle spice-0"><span class="badge">한식 · 면 · 0</span><h3>잔치국수</h3><div class="meta">멸치 육수, 담백</div><div class="tags"><span class="tag light">가벼움</span></div></article>
-    <article class="card cuisine-korean type-noodle spice-2"><span class="badge">한식 · 면 · 2</span><h3>비빔국수</h3><div class="meta">새콤달콤 매콤</div><div class="tags"><span class="tag spicy">칼칼</span></div></article>
-    <article class="card cuisine-korean type-stew spice-2"><span class="badge">한식 · 국/찌개 · 2</span><h3>김치찌개</h3><div class="meta">돼지고기 + 묵은지</div><div class="tags"><span class="tag spicy">매콤</span></div></article>
-    <article class="card cuisine-korean type-stew spice-3"><span class="badge">한식 · 국/찌개 · 3</span><h3>부대찌개(매운맛)</h3><div class="meta">햄·치즈 풍성</div><div class="tags"><span class="tag spicy">화끈</span></div></article>
-    <article class="card cuisine-korean type-grill spice-1"><span class="badge">한식 · 구이 · 1</span><h3>고추장 삼겹살</h3><div class="meta">숯불향</div><div class="tags"><span class="tag">든든</span></div></article>
-    <article class="card cuisine-korean type-grill spice-0"><span class="badge">한식 · 구이 · 0</span><h3>소금구이 삼겹살</h3><div class="meta">담백, 쌈과 함께</div><div class="tags"><span class="tag">든든</span></div></article>
-    <article class="card cuisine-korean type-salad spice-0"><span class="badge">한식 · 샐러드 · 0</span><h3>두부 샐러드</h3><div class="meta">참깨 드레싱</div><div class="tags"><span class="tag light">가벼움</span></div></article>
-    <article class="card cuisine-korean type-porridge spice-0"><span class="badge">한식 · 죽 · 0</span><h3>전복죽</h3><div class="meta">부드럽고 영양가</div><div class="tags"><span class="tag light">부드러움</span></div></article>
-    <article class="card cuisine-korean type-etc spice-1"><span class="badge">한식 · 기타 · 1</span><h3>양념 치킨</h3><div class="meta">달콤매콤</div><div class="tags"><span class="tag spicy">매콤</span></div></article>
-    <article class="card cuisine-korean type-etc spice-0"><span class="badge">한식 · 기타 · 0</span><h3>후라이드 치킨</h3><div class="meta">바삭바삭</div><div class="tags"><span class="tag">공유</span></div></article>
+  <script type="module">
+    // --- 샘플 데이터셋 (id는 서버 좋아요 키로 사용) ---
+    const FOODS = [
+      { id:"kimchi-jjigae",  name:"김치찌개",    country:"한국", category:"찌개/탕",  spicy:3 },
+      { id:"bibimbap",       name:"비빔밥",      country:"한국", category:"밥",      spicy:1 },
+      { id:"ramen",          name:"라멘",        country:"일본", category:"면",      spicy:1 },
+      { id:"mapo-tofu",      name:"마파두부",    country:"중국", category:"구이/볶음", spicy:3 },
+      { id:"pad-thai",       name:"팟타이",      country:"태국", category:"면",      spicy:2 },
+      { id:"green-curry",    name:"그린커리",    country:"태국", category:"찌개/탕",  spicy:4 },
+      { id:"butter-chicken", name:"버터치킨",    country:"인도", category:"구이/볶음", spicy:2 },
+      { id:"tiramisu",       name:"티라미수",    country:"이탈리아", category:"디저트", spicy:0 },
+      { id:"taco",           name:"타코",        country:"멕시코", category:"밥",      spicy:2 },
+      { id:"jajangmyeon",    name:"짜장면",      country:"중국", category:"면",      spicy:0 },
+    ];
 
-    <!-- Western -->
-    <article class="card cuisine-western type-noodle spice-1"><span class="badge">양식 · 면 · 1</span><h3>아라비아따</h3><div class="meta">톡 쏘는 토마토</div><div class="tags"><span class="tag spicy">은근 매콤</span></div></article>
-    <article class="card cuisine-western type-noodle spice-0"><span class="badge">양식 · 면 · 0</span><h3>까르보나라</h3><div class="meta">계란·치즈</div><div class="tags"><span class="tag">진한맛</span></div></article>
-    <article class="card cuisine-western type-noodle spice-0"><span class="badge">양식 · 면 · 0</span><h3>알리오 올리오</h3><div class="meta">올리브·마늘 풍미</div><div class="tags"><span class="tag light">심플</span></div></article>
-    <article class="card cuisine-western type-porridge spice-0"><span class="badge">양식 · 리조또 · 0</span><h3>버섯 리조또</h3><div class="meta">크리미</div><div class="tags"><span class="tag">든든</span></div></article>
-    <article class="card cuisine-western type-grill spice-0"><span class="badge">양식 · 그릴 · 0</span><h3>스테이크</h3><div class="meta">미디엄 레어 추천</div><div class="tags"><span class="tag">든든</span></div></article>
-    <article class="card cuisine-western type-burger spice-0"><span class="badge">양식 · 버거 · 0</span><h3>치즈버거</h3><div class="meta">촉촉한 패티</div><div class="tags"><span class="tag">클래식</span></div></article>
-    <article class="card cuisine-western type-salad spice-0"><span class="badge">양식 · 샐러드 · 0</span><h3>시저 샐러드</h3><div class="meta">치킨 토핑</div><div class="tags"><span class="tag light">가벼움</span></div></article>
-    <article class="card cuisine-western type-soup spice-0"><span class="badge">양식 · 수프 · 0</span><h3>미네스트로네</h3><div class="meta">토마토 야채 수프</div><div class="tags"><span class="tag light">따뜻</span></div></article>
-    <article class="card cuisine-western type-etc spice-0"><span class="badge">양식 · 기타 · 0</span><h3>마르게리타 피자</h3><div class="meta">토마토·바질</div><div class="tags"><span class="tag">공유</span></div></article>
-
-    <!-- Japanese -->
-    <article class="card cuisine-japanese type-rice spice-0"><span class="badge">일식 · 밥 · 0</span><h3>가츠동</h3><div class="meta">돈까스 덮밥</div><div class="tags"><span class="tag">든든</span></div></article>
-    <article class="card cuisine-japanese type-rice spice-0"><span class="badge">일식 · 밥 · 0</span><h3>사케동</h3><div class="meta">연어 덮밥</div><div class="tags"><span class="tag light">상큼</span></div></article>
-    <article class="card cuisine-japanese type-noodle spice-0"><span class="badge">일식 · 면 · 0</span><h3>우동</h3><div class="meta">쫄깃한 면</div><div class="tags"><span class="tag light">부드러움</span></div></article>
-    <article class="card cuisine-japanese type-noodle spice-1"><span class="badge">일식 · 면 · 1</span><h3>탄탄멘</h3><div class="meta">고소+매콤</div><div class="tags"><span class="tag spicy">은근 매콤</span></div></article>
-    <article class="card cuisine-japanese type-etc spice-0"><span class="badge">일식 · 기타 · 0</span><h3>사시미 모둠</h3><div class="meta">싱싱한 회</div><div class="tags"><span class="tag">공유</span></div></article>
-    <article class="card cuisine-japanese type-dimsum spice-0"><span class="badge">일식 · 딤섬 · 0</span><h3>교자</h3><div class="meta">구운 만두</div><div class="tags"><span class="tag">간식</span></div></article>
-
-    <!-- Chinese -->
-    <article class="card cuisine-chinese type-noodle spice-2"><span class="badge">중식 · 면 · 2</span><h3>짬뽕</h3><div class="meta">얼큰 해물</div><div class="tags"><span class="tag spicy">매콤</span></div></article>
-    <article class="card cuisine-chinese type-noodle spice-0"><span class="badge">중식 · 면 · 0</span><h3>짜장면</h3><div class="meta">춘장 풍미</div><div class="tags"><span class="tag">든든</span></div></article>
-    <article class="card cuisine-chinese type-rice spice-0"><span class="badge">중식 · 밥 · 0</span><h3>새우볶음밥</h3><div class="meta">불맛</div><div class="tags"><span class="tag">빠른 식사</span></div></article>
-    <article class="card cuisine-chinese type-dimsum spice-0"><span class="badge">중식 · 딤섬 · 0</span><h3>샤오롱바오</h3><div class="meta">육즙 가득</div><div class="tags"><span class="tag">한입</span></div></article>
-    <article class="card cuisine-chinese type-etc spice-3"><span class="badge">중식 · 기타 · 3</span><h3>마라탕(강辣)</h3><div class="meta">취향 커스터마이즈</div><div class="tags"><span class="tag spicy">아주 매움</span></div></article>
-
-    <!-- Indian -->
-    <article class="card cuisine-indian type-rice spice-1"><span class="badge">인도 · 밥 · 1</span><h3>치킨 비리야니</h3><div class="meta">향신료 밥</div><div class="tags"><span class="tag">풍미</span></div></article>
-    <article class="card cuisine-indian type-etc spice-1"><span class="badge">인도 · 기타 · 1</span><h3>버터 치킨 + 난</h3><div class="meta">크리미 커리</div><div class="tags"><span class="tag">든든</span></div></article>
-    <article class="card cuisine-indian type-soup spice-2"><span class="badge">인도 · 수프 · 2</span><h3>토마토 달(달 스프)</h3><div class="meta">렌틸콩</div><div class="tags"><span class="tag spicy">은근 매콤</span></div></article>
-
-    <!-- Etc / Fusion / World -->
-    <article class="card cuisine-etc type-noodle spice-0"><span class="badge">기타 · 면 · 0</span><h3>쌀국수(퍼보)</h3><div class="meta">맑고 깊은 육수</div><div class="tags"><span class="tag light">가벼움</span></div></article>
-    <article class="card cuisine-etc type-noodle spice-1"><span class="badge">기타 · 면 · 1</span><h3>팟타이</h3><div class="meta">달콤새콤</div><div class="tags"><span class="tag">땅콩향</span></div></article>
-    <article class="card cuisine-etc type-salad spice-0"><span class="badge">기타 · 샐러드 · 0</span><h3>연어 포케</h3><div class="meta">밥/샐러드 선택</div><div class="tags"><span class="tag light">상큼</span></div></article>
-    <article class="card cuisine-etc type-burger spice-0"><span class="badge">기타 · 샌드위치 · 0</span><h3>바게트 샌드</h3><div class="meta">햄·치즈</div><div class="tags"><span class="tag light">간편</span></div></article>
-    <article class="card cuisine-etc type-grill spice-2"><span class="badge">기타 · 그릴 · 2</span><h3>핫 치킨 타코</h3><div class="meta">고기/새우 선택</div><div class="tags"><span class="tag spicy">매콤</span></div></article>
-    <article class="card cuisine-etc type-porridge spice-0"><span class="badge">기타 · 오트밀 · 0</span><h3>토마토 오트밀</h3><div class="meta">담백</div><div class="tags"><span class="tag light">가벼움</span></div></article>
-    <article class="card cuisine-etc type-soup spice-0"><span class="badge">기타 · 수프 · 0</span><h3>클램 차우더</h3><div class="meta">크리미</div><div class="tags"><span class="tag">든든</span></div></article>
-    <article class="card cuisine-etc type-etc spice-0"><span class="badge">기타 · 기타 · 0</span><h3>타코 세트</h3><div class="meta">쉐어하기 좋음</div><div class="tags"><span class="tag">공유</span></div></article>
-  </main>
-
-  <footer>
-    HTML & CSS :has()로 다중 필터링 · 랜덤은 현재 화면에 보이는 카드 중 추첨합니다. "누적 접속자"는 이 브라우저 기준 localStorage 저장입니다. 전 사용자 합산은 Firebase 등 백엔드 연결로 확장 가능해요.
-  </footer>
-
-  <script>
-    // 방문자 카운트 (브라우저 기준)
-    (function(){
-      try{
-        const TOTAL_KEY='visits_total';
-        const TODAY_KEY='visits_by_date';
-        const t=new Date();
-        const ds=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
-        const total=Number(localStorage.getItem(TOTAL_KEY)||0)+1; localStorage.setItem(TOTAL_KEY,String(total));
-        const map=JSON.parse(localStorage.getItem(TODAY_KEY)||'{}'); map[ds]=(map[ds]||0)+1; localStorage.setItem(TODAY_KEY,JSON.stringify(map));
-        document.getElementById('stat-total').textContent=total.toLocaleString();
-        document.getElementById('stat-today').textContent=(map[ds]||1).toLocaleString();
-      }catch(e){ document.getElementById('stat-total').textContent='지원 안됨'; document.getElementById('stat-today').textContent='지원 안됨'; }
-    })();
-
-    // 필터 텍스트 표시
-    const filterNames={
-      cuisine:{'c-all':'전체','c-korean':'한식','c-western':'양식','c-japanese':'일식','c-chinese':'중식','c-indian':'인도','c-etc':'기타'},
-      type:{'t-all':'전체','t-rice':'밥','t-noodle':'면','t-salad':'샐러드','t-porridge':'죽/리조또','t-grill':'구이/그릴','t-stew':'국/찌개/탕','t-burger':'버거/샌드위치','t-soup':'수프','t-dimsum':'딤섬','t-etc':'기타'},
-      spice:{'s-all':'전체','s-0':'0','s-1':'1','s-2':'2','s-3':'3'}
-    };
-    function updateFilterStat(){
-      const id=(n)=>{const el=document.querySelector(`input[name="${n}"]:checked`);return el?el.id:''};
-      const c=filterNames.cuisine[id('cuisine')]||'전체';
-      const t=filterNames.type[id('type')]||'전체';
-      const s=filterNames.spice[id('spice')]||'전체';
-      document.getElementById('stat-filter').textContent=`${c} · ${t} · 맵기 ${s}`;
+    // --- 오늘 방문 기록 (IP당 1회) & 카운트 표시 ---
+    async function touchVisitAndLoadCount(){
+      try {
+        await fetch('/api/visit', { method:'POST' });
+      } catch(e) { console.warn('visit post failed', e); }
+      const r = await fetch('/api/visit-count');
+      const j = await r.json();
+      document.getElementById('visitCount').textContent = j.count ?? '-';
     }
-    ['cuisine','type','spice'].forEach(n=>document.querySelectorAll(`input[name="${n}"]`).forEach(el=>el.addEventListener('change',()=>{updateFilterStat(); clearPicked();})));
-    updateFilterStat();
 
-    // 초기화
-    document.getElementById('btn-reset').addEventListener('click',()=>{
-      ['#c-all','#t-all','#s-all'].forEach(sel=>{const el=document.querySelector(sel); if(el) el.checked=true;});
-      updateFilterStat(); clearPicked(); window.scrollTo({top:0,behavior:'smooth'});
+    // --- 필터 기반 추천 ---
+    function filterFoods(){
+      const country = document.getElementById('country').value;
+      const category = document.getElementById('category').value;
+      const spicy = document.getElementById('spicy').value;
+      return FOODS.filter(f =>
+        (country === '' || f.country === country) &&
+        (category === '' || f.category === category) &&
+        (spicy === '' || f.spicy === Number(spicy))
+      );
+    }
+
+    function pickRandom(arr){
+      if (!arr.length) return null;
+      return arr[Math.floor(Math.random()*arr.length)];
+    }
+
+    // --- UI 렌더 ---
+    let currentItem = null;
+    async function renderItem(item){
+      if (!item) { document.getElementById('result').classList.add('hidden'); return; }
+      currentItem = item;
+      document.getElementById('itemName').textContent = item.name;
+      document.getElementById('itemMeta').textContent = `${item.country} · ${item.category}`;
+      document.getElementById('spicyBadge').textContent = `맵기 ${item.spicy}`;
+      document.getElementById('result').classList.remove('hidden');
+      // 좋아요 카운트 로드
+      const r = await fetch(`/api/like-count?item_id=${encodeURIComponent(item.id)}`);
+      const j = await r.json();
+      document.getElementById('likeCount').textContent = j.count ?? 0;
+    }
+
+    // --- 이벤트 ---
+    document.getElementById('btnRecommend').addEventListener('click', () => {
+      const list = filterFoods();
+      renderItem(pickRandom(list));
+    });
+    document.getElementById('btnRandom').addEventListener('click', () => {
+      renderItem(pickRandom(FOODS));
+    });
+    document.getElementById('btnLike').addEventListener('click', async () => {
+      if (!currentItem) return;
+      const r = await fetch('/api/like', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ item_id: currentItem.id })});
+      const j = await r.json();
+      document.getElementById('likeCount').textContent = j.count ?? 0;
     });
 
-    // 랜덤 추첨: 현재 보이는 카드 중 하나를 선택
-    const clearPicked=()=>document.querySelectorAll('.picked').forEach(el=>el.classList.remove('picked'));
-    function pickRandom(){
-      const visible=[...document.querySelectorAll('.grid .card')].filter(el=>el.offsetParent!==null);
-      if(!visible.length) return;
-      clearPicked();
-      const pick=visible[Math.floor(Math.random()*visible.length)];
-      pick.classList.add('picked');
-      const name=pick.querySelector('h3')?.textContent||'메뉴';
-      document.getElementById('stat-random').textContent=name;
-      pick.scrollIntoView({behavior:'smooth',block:'center'});
-    }
-    document.getElementById('btn-random').addEventListener('click',pickRandom);
+    // 초기화
+    touchVisitAndLoadCount();
   </script>
 </body>
 </html>
+
+
+############################
+# functions/api/visit.js
+############################
+export async function onRequest({ env, request }) {
+  const db = env.DB;
+  const ip = getIP(request);
+  const date = getLocalDateYYYYMMDD();
+  await ensureSchema(db);
+  // 오늘 날짜 + IP 고유 방문 저장 (중복 무시)
+  await db.prepare(
+    `INSERT OR IGNORE INTO visits(date, ip, ts) VALUES (?, ?, strftime('%s','now'))`
+  ).bind(date, ip).run();
+  // 합계 반환
+  const { results } = await db.prepare(
+    `SELECT COUNT(1) as cnt FROM visits WHERE date = ?`
+  ).bind(date).all();
+  return json({ ok: true, count: results?.[0]?.cnt ?? 0 });
+}
+
+function getIP(request) {
+  const h = request.headers;
+  return h.get('cf-connecting-ip') || (h.get('x-forwarded-for')||'').split(',')[0].trim() || '0.0.0.0';
+}
+
+function getLocalDateYYYYMMDD() {
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit' });
+  const [y,m,d] = fmt.formatToParts(new Date()).filter(p=>p.type!=='literal').map(p=>p.value);
+  return `${y}-${m}-${d}`;
+}
+
+async function ensureSchema(db){
+  // 가벼운 체크 (없으면 생성)
+  await db.exec(`CREATE TABLE IF NOT EXISTS visits (
+    date TEXT NOT NULL,
+    ip   TEXT NOT NULL,
+    ts   INTEGER,
+    UNIQUE(date, ip)
+  );`);
+}
+
+function json(obj, init={}){ return new Response(JSON.stringify(obj), {status:200, headers:{'content-type':'application/json', ...init.headers}}); }
+
+
+############################
+# functions/api/visit-count.js
+############################
+export async function onRequest({ env }) {
+  const db = env.DB;
+  await ensureSchema(db);
+  const date = getLocalDateYYYYMMDD();
+  const { results } = await db.prepare(`SELECT COUNT(1) as cnt FROM visits WHERE date = ?`).bind(date).all();
+  return new Response(JSON.stringify({ count: results?.[0]?.cnt ?? 0 }), { headers:{'content-type':'application/json'} });
+}
+
+function getLocalDateYYYYMMDD() {
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit' });
+  const [y,m,d] = fmt.formatToParts(new Date()).filter(p=>p.type!=='literal').map(p=>p.value);
+  return `${y}-${m}-${d}`;
+}
+
+async function ensureSchema(db){
+  await db.exec(`CREATE TABLE IF NOT EXISTS visits (
+    date TEXT NOT NULL,
+    ip   TEXT NOT NULL,
+    ts   INTEGER,
+    UNIQUE(date, ip)
+  );`);
+}
+
+
+############################
+# functions/api/like.js
+############################
+export async function onRequest({ env, request }) {
+  const db = env.DB;
+  const ip = getIP(request);
+  const body = await request.json().catch(()=>({}));
+  const item = String(body.item_id||'').slice(0,100);
+  if (!item) return new Response(JSON.stringify({ ok:false, error:'item_id required' }), { status:400, headers:{'content-type':'application/json'} });
+  await ensureSchema(db);
+  // IP당 1회 좋아요 (중복 무시)
+  await db.prepare(`INSERT OR IGNORE INTO likes(item_id, ip, ts) VALUES (?, ?, strftime('%s','now'))`).bind(item, ip).run();
+  // 합계 계산
+  const { results } = await db.prepare(`SELECT COUNT(1) as cnt FROM likes WHERE item_id = ?`).bind(item).all();
+  return new Response(JSON.stringify({ ok:true, count: results?.[0]?.cnt ?? 0 }), { headers:{'content-type':'application/json'} });
+}
+
+function getIP(request){
+  const h = request.headers;
+  return h.get('cf-connecting-ip') || (h.get('x-forwarded-for')||'').split(',')[0].trim() || '0.0.0.0';
+}
+
+async function ensureSchema(db){
+  await db.exec(`CREATE TABLE IF NOT EXISTS likes (
+    item_id TEXT NOT NULL,
+    ip      TEXT NOT NULL,
+    ts      INTEGER,
+    UNIQUE(item_id, ip)
+  );`);
+}
+
+
+############################
+# functions/api/like-count.js
+############################
+export async function onRequest({ env, request }) {
+  const db = env.DB;
+  const url = new URL(request.url);
+  const item = String(url.searchParams.get('item_id')||'').slice(0,100);
+  if (!item) return new Response(JSON.stringify({ count: 0 }), { headers:{'content-type':'application/json'} });
+  await ensureSchema(db);
+  const { results } = await db.prepare(`SELECT COUNT(1) as cnt FROM likes WHERE item_id = ?`).bind(item).all();
+  return new Response(JSON.stringify({ count: results?.[0]?.cnt ?? 0 }), { headers:{'content-type':'application/json'} });
+}
+
+async function ensureSchema(db){
+  await db.exec(`CREATE TABLE IF NOT EXISTS likes (
+    item_id TEXT NOT NULL,
+    ip      TEXT NOT NULL,
+    ts      INTEGER,
+    UNIQUE(item_id, ip)
+  );`);
+}
+
+
+############################
+# schema.sql  (배포 전 한 번만 실행)
+############################
+-- 방문 테이블 (오늘 날짜 + IP 기준으로 1회)
+CREATE TABLE IF NOT EXISTS visits (
+  date TEXT NOT NULL,
+  ip   TEXT NOT NULL,
+  ts   INTEGER,
+  UNIQUE(date, ip)
+);
+
+-- 좋아요 테이블 (아이템 + IP 기준으로 1회)
+CREATE TABLE IF NOT EXISTS likes (
+  item_id TEXT NOT NULL,
+  ip      TEXT NOT NULL,
+  ts      INTEGER,
+  UNIQUE(item_id, ip)
+);
+
+
+############################
+# wrangler.toml (예시)
+############################
+name = "food-recommender"
+compatibility_date = "2024-11-01"
+
+[[d1_databases]]
+binding = "DB"         # 코드에서 env.DB 로 접근
+database_name = "fooddb"
+database_id = "REPLACE_WITH_YOUR_D1_ID"
+
+
+############################
+# README.md (요약 가이드)
+############################
+# 1) Cloudflare 계정 생성 → Pages 새 프로젝트 → 이 리포 연결(또는 업로드)
+# 2) D1 생성: 대시보드에서 D1 DB 생성 후 wrangler.toml 의 database_id 교체
+# 3) 로컬에서 스키마 적용 (선택) 또는 대시보드 쿼리로 schema.sql 실행
+#    wrangler d1 execute fooddb --file=./schema.sql
+# 4) Pages → Settings → Functions에서 D1 바인딩(DB)을 추가 (binding 이름 DB)
+# 5) 배포 후 접속하면 /api/visit 가 자동으로 IP 1회 기록, /api/visit-count 로 오늘 방문수 표시
+# 6) 추천/랜덤으로 아이템 노출 → 좋아요 누르면 /api/like 가 IP당 1회 집계
+# 7) 필요 시 FOODS 배열에 메뉴를 추가하거나, 별도 D1 테이블로 확장 가능
