@@ -2,119 +2,429 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>오늘 뭐 먹지 · 실시간(오늘 방문 + 투표)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>오늘 뭐 먹지 · 음식 추천 (필터+맵기+방문자)</title>
   <style>
-    body{font-family:system-ui, -apple-system, Segoe UI, Roboto, 'Noto Sans KR', Arial;
-         margin:40px auto; max-width:900px; padding:0 16px; line-height:1.6}
-    h1{margin:0 0 8px}
-    .card{border:1px solid #e5e7eb; border-radius:14px; padding:16px; margin:14px 0}
-    .row{display:flex; gap:10px; flex-wrap:wrap}
-    button{padding:8px 12px; border-radius:10px; border:1px solid #e5e7eb; cursor:pointer}
-    .muted{color:#6b7280}
-    .pill{display:inline-block; padding:4px 10px; border:1px solid #e5e7eb; border-radius:999px; margin-right:6px}
-  </style>
-
-  <!-- Firebase CDN (npm 안 쓰는 순수 HTML용) -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js"></script>
-</head>
-<body>
-  <h1>🍱 오늘 뭐 먹지</h1>
-  <p class="muted">깃허브 페이지 + Firebase Realtime DB (오늘 누적 접속자 · 투표 동기화)</p>
-
-  <div class="card">
-    <h2>📈 오늘 누적 접속자</h2>
-    <div>오늘(Asia/Seoul) 방문 수: <strong id="todayCount">0</strong> 명</div>
-  </div>
-
-  <div class="card">
-    <h2>🗳️ 투표</h2>
-    <div id="voteButtons" class="row"></div>
-    <div style="margin-top:10px" id="voteResults" class="muted">로드 중…</div>
-  </div>
-
-  <script>
-    // 1) 여기만 본인 프로젝트 값으로 교체 (Firebase 콘솔 → 웹앱 추가에서 제공)
-    const firebaseConfig = {
-      apiKey: "AIzaSyExample-abcdefg1234567890",
-      authDomain: "menu-app.firebaseapp.com",
-      databaseURL: "https://menu-app-default-rtdb.firebaseio.com",
-      projectId: "menu-app",
-      storageBucket: "menu-app.appspot.com",
-      messagingSenderId: "1234567890",
-      appId: "1:1234567890:web:abcdef123456"
-    };
-
-    // 2) 투표 항목 정의 (원하는 메뉴로 바꾸세요)
-    const VOTE_OPTIONS = ["비빔밥", "라면", "김치찌개", "파스타", "초밥"];
-
-    // --- Firebase 초기화 ---
-    const app = firebase.initializeApp(firebaseConfig);
-    const db  = firebase.database();
-
-    // --- 유틸: 오늘 날짜(Asia/Seoul) YYYY-MM-DD ---
-    function todayKR() {
-      const now = new Date();
-      const formatter = new Intl.DateTimeFormat("ko-KR", {
-        timeZone: "Asia/Seoul",
-        year: "numeric", month: "2-digit", day: "2-digit"
-      });
-      const [{value:y},{value:sep1},{value:m},{value:sep2},{value:d}] = formatter.formatToParts(now);
-      // ko-KR는 보통 2025. 11. 03. 형식 → 안전하게 0패딩 정규화
-      const yy = y.padStart(4,"0");
-      const mm = m.padStart(2,"0").replace(/\D/g,"");
-      const dd = d.padStart(2,"0").replace(/\D/g,"");
-      return `${yy}-${mm}-${dd}`;
+    /* ====== Design tokens ====== */
+    :root{
+      --bg:#0a0c11;          /* page background */
+      --bg-accent:#0d1220;   /* accent background */
+      --panel:#101622;       /* cards & panels */
+      --panel-2:#0f1520;     /* deeper panel */
+      --text:#eaf0fb;        /* main text */
+      --muted:#a5b4ce;       /* secondary text */
+      --brand:#7aa2ff;       /* blue */
+      --brand-2:#b58cff;     /* purple */
+      --ok:#89d185;          /* green */
+      --warn:#ffcc66;        /* yellow */
+      --spicy:#ff7a7a;       /* red */
+      --radius:20px;
+      --shadow:0 10px 28px rgba(0,0,0,.35);
+      --shadow-soft:0 2px 12px rgba(0,0,0,.22);
+      --ring: 0 0 0 1px rgba(255,255,255,.09), 0 8px 24px rgba(0,0,0,.30);
     }
 
-    // =========================
-    // A) 오늘 누적 접속자 (중복 방지)
-    // =========================
-    (function trackTodayVisits(){
-      const key = "visited-"+todayKR();
-      if (!sessionStorage.getItem(key)) {
-        sessionStorage.setItem(key, "1"); // 새 탭/새 세션당 1회만 카운트
-        const ref = db.ref("stats/" + todayKR() + "/visits");
-        // 트랜잭션으로 원자적 증가
-        ref.transaction(current => (current || 0) + 1);
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; 
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(124,138,255,.14), transparent),
+        radial-gradient(1000px 500px at 90% -20%, rgba(122,162,255,.12), transparent),
+        linear-gradient(180deg, #0a0c11, #0a0c11 35%, #0b1020 100%);
+      color:var(--text); 
+      font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", Apple SD Gothic Neo, sans-serif;
+      display:flex; flex-direction:column; gap:22px; padding:28px;
+    }
+
+    /* ====== Header ====== */
+    header{ max-width:1180px; margin:0 auto; padding:8px 0 0; }
+    .hero{ display:grid; grid-template-columns:1fr; gap:10px; text-align:center; }
+    .title{font-size:clamp(26px, 4.2vw, 48px); font-weight:900; letter-spacing:-.02em}
+    .subtitle{color:var(--muted); font-size:clamp(14px, 2vw, 18px)}
+
+    /* ====== Stat Bar ====== */
+    .stats{ max-width:1180px; margin:6px auto 0; display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+    .stat{
+      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:12px 14px; box-shadow:var(--shadow-soft);
+      display:flex; align-items:center; gap:12px;
+    }
+    .stat .icon{font-size:22px}
+    .stat .label{color:var(--muted); font-size:12px; letter-spacing:.02em}
+    .stat .value{font-size:18px; font-weight:800}
+
+    /* ====== Filter bar ====== */
+    .filters{position:sticky; top:10px; z-index:5;}
+    .filters .panel{max-width:1180px; margin:0 auto; background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      backdrop-filter: blur(10px); border:1px solid rgba(255,255,255,.10); border-radius:calc(var(--radius) + 4px);
+      box-shadow:var(--ring); padding:12px 12px 6px;}
+
+    .row{display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:6px 8px}
+    .row label.group{color:var(--muted); font-weight:800; letter-spacing:.02em; margin-right:4px}
+
+    .visually-hidden{position:absolute!important; clip:rect(1px,1px,1px,1px); width:1px; height:1px; overflow:hidden}
+    .chip{ --bd: rgba(255,255,255,.14); display:inline-flex; align-items:center; gap:8px; padding:9px 13px; border:1px solid var(--bd);
+      border-radius:999px; background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03)); cursor:pointer; user-select:none; transition:.2s ease;
+      box-shadow:var(--shadow-soft); font-weight:700; font-size:14px}
+    .chip:hover{ transform:translateY(-1px); }
+    input[type="radio"]:checked + label.chip{ --bd:transparent; background:linear-gradient(180deg, rgba(122,162,255,.28), rgba(122,162,255,.10)); color:#fff; box-shadow:0 4px 14px rgba(122,162,255,.35), inset 0 0 0 1px rgba(255,255,255,.12); }
+
+    .reset{ margin-left:auto; }
+    .reset .chip{ background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02)); }
+
+    /* ====== Grid ====== */
+    .grid{ max-width:1180px; margin:14px auto 80px; display:grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap:16px; }
+
+    .card{ background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015)); border:1px solid rgba(255,255,255,.10); border-radius:var(--radius); padding:14px; box-shadow:var(--shadow); position:relative; overflow:hidden; }
+    .card .badge{position:absolute; top:10px; right:10px; font-size:12px; padding:6px 10px; border-radius:999px; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12); color:var(--muted)}
+    .card h3{margin:6px 0 6px; font-size:18px; letter-spacing:-.02em}
+    .meta{color:var(--muted); font-size:13px}
+    .tags{display:flex; flex-wrap:wrap; gap:6px; margin-top:10px}
+    .tag{font-size:12px; padding:5px 8px; border-radius:8px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08)}
+    .tag.spicy{border-color: rgba(255, 98, 98, .35); color:#ffdada; background:rgba(255,98,98,.12)}
+    .tag.light{border-color: rgba(137, 209, 133, .35); color:#e6ffe6; background:rgba(137,209,133,.12)}
+
+    .card .cta{margin-top:12px; display:flex; gap:8px}
+    .btn{flex:1; text-align:center; padding:8px 10px; font-weight:800; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03)); color:#fff; text-decoration:none}
+    .btn:hover{filter:brightness(1.07)}
+
+    /* ====== Filtering logic (CSS-only using :has()) ====== */
+    /* Default: show all cards */
+    .card{display:block}
+
+    /* Cuisine filter */
+    .page:has(#c-korean:checked) .card:not(.cuisine-korean){display:none}
+    .page:has(#c-western:checked) .card:not(.cuisine-western){display:none}
+    .page:has(#c-japanese:checked) .card:not(.cuisine-japanese){display:none}
+    .page:has(#c-chinese:checked) .card:not(.cuisine-chinese){display:none}
+    .page:has(#c-indian:checked) .card:not(.cuisine-indian){display:none}
+    .page:has(#c-etc:checked) .card:not(.cuisine-etc){display:none}
+    .page:has(#c-all:checked) .card{display:block}
+
+    /* Type filter */
+    .page:has(#t-rice:checked) .card:not(.type-rice){display:none}
+    .page:has(#t-noodle:checked) .card:not(.type-noodle){display:none}
+    .page:has(#t-salad:checked) .card:not(.type-salad){display:none}
+    .page:has(#t-porridge:checked) .card:not(.type-porridge){display:none}
+    .page:has(#t-grill:checked) .card:not(.type-grill){display:none}
+    .page:has(#t-stew:checked) .card:not(.type-stew){display:none}
+    .page:has(#t-etc:checked) .card:not(.type-etc){display:none}
+    .page:has(#t-all:checked) .card{display:block}
+
+    /* Spiciness filter */
+    .page:has(#s-0:checked) .card:not(.spice-0){display:none}
+    .page:has(#s-1:checked) .card:not(.spice-1){display:none}
+    .page:has(#s-2:checked) .card:not(.spice-2){display:none}
+    .page:has(#s-3:checked) .card:not(.spice-3){display:none}
+    .page:has(#s-all:checked) .card{display:block}
+
+    /* Footer */
+    footer{max-width:1180px; margin:10px auto 0; color:var(--muted); font-size:13px; text-align:center}
+  </style>
+</head>
+<body class="page">
+  <header>
+    <div class="hero">
+      <div class="title">오늘 뭐 먹지? 🍚🍜🥗</div>
+      <div class="subtitle">나라·종류·맵기 3단 필터로 빠르게 골라보세요. 필요하면 우측의 초기화로 전체 보기!</div>
+    </div>
+  </header>
+
+  <!-- Stats Bar (localStorage 기반, 같은 브라우저 누적) -->
+  <section class="stats" aria-label="방문자 통계">
+    <div class="stat"><div class="icon">👥</div><div><div class="label">이 브라우저 누적 방문</div><div class="value" id="stat-total">-</div></div></div>
+    <div class="stat"><div class="icon">📅</div><div><div class="label">오늘 방문(이 브라우저)</div><div class="value" id="stat-today">-</div></div></div>
+    <div class="stat"><div class="icon">⚡</div><div><div class="label">현재 적용 필터</div><div class="value" id="stat-filter">전체</div></div></div>
+  </section>
+
+  <section class="filters">
+    <div class="panel">
+      <div class="row" role="group" aria-label="나라별">
+        <label class="group">나라별</label>
+        <input class="visually-hidden" type="radio" name="cuisine" id="c-all" checked>
+        <label class="chip" for="c-all">전체</label>
+        <input class="visually-hidden" type="radio" name="cuisine" id="c-korean"><label class="chip" for="c-korean">한식</label>
+        <input class="visually-hidden" type="radio" name="cuisine" id="c-western"><label class="chip" for="c-western">양식</label>
+        <input class="visually-hidden" type="radio" name="cuisine" id="c-japanese"><label class="chip" for="c-japanese">일식</label>
+        <input class="visually-hidden" type="radio" name="cuisine" id="c-chinese"><label class="chip" for="c-chinese">중식</label>
+        <input class="visually-hidden" type="radio" name="cuisine" id="c-indian"><label class="chip" for="c-indian">인도</label>
+        <input class="visually-hidden" type="radio" name="cuisine" id="c-etc"><label class="chip" for="c-etc">기타</label>
+        <div class="reset"><button class="chip" type="button" id="btn-reset">초기화</button></div>
+      </div>
+
+      <div class="row" role="group" aria-label="종류별">
+        <label class="group">종류별</label>
+        <input class="visually-hidden" type="radio" name="type" id="t-all" checked><label class="chip" for="t-all">전체</label>
+        <input class="visually-hidden" type="radio" name="type" id="t-rice"><label class="chip" for="t-rice">밥</label>
+        <input class="visually-hidden" type="radio" name="type" id="t-noodle"><label class="chip" for="t-noodle">면</label>
+        <input class="visually-hidden" type="radio" name="type" id="t-salad"><label class="chip" for="t-salad">샐러드</label>
+        <input class="visually-hidden" type="radio" name="type" id="t-porridge"><label class="chip" for="t-porridge">죽</label>
+        <input class="visually-hidden" type="radio" name="type" id="t-grill"><label class="chip" for="t-grill">구이/그릴</label>
+        <input class="visually-hidden" type="radio" name="type" id="t-stew"><label class="chip" for="t-stew">국/찌개</label>
+        <input class="visually-hidden" type="radio" name="type" id="t-etc"><label class="chip" for="t-etc">기타</label>
+      </div>
+
+      <div class="row" role="group" aria-label="맵기">
+        <label class="group">맵기</label>
+        <input class="visually-hidden" type="radio" name="spice" id="s-all" checked><label class="chip" for="s-all">전체</label>
+        <input class="visually-hidden" type="radio" name="spice" id="s-0"><label class="chip" for="s-0">0 🌿</label>
+        <input class="visually-hidden" type="radio" name="spice" id="s-1"><label class="chip" for="s-1">1 🌶️</label>
+        <input class="visually-hidden" type="radio" name="spice" id="s-2"><label class="chip" for="s-2">2 🌶️🌶️</label>
+        <input class="visually-hidden" type="radio" name="spice" id="s-3"><label class="chip" for="s-3">3 🌶️🌶️🌶️</label>
+      </div>
+    </div>
+  </section>
+
+  <main class="grid">
+    <!-- ===== Expanded menu cards ===== -->
+    <!-- Korean -->
+    <article class="card cuisine-korean type-rice spice-1">
+      <span class="badge">한식 · 밥 · 🌶️1</span>
+      <h3>비빔밥</h3>
+      <div class="meta">채소 듬뿍, 고추장 비빔</div>
+      <div class="tags"><span class="tag light">가벼움</span><span class="tag spicy">매콤</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-korean type-rice spice-0">
+      <span class="badge">한식 · 밥 · 0</span>
+      <h3>불고기 덮밥</h3>
+      <div class="meta">달짝지근한 소고기, 간장 베이스</div>
+      <div class="tags"><span class="tag">든든</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-korean type-noodle spice-0">
+      <span class="badge">한식 · 면 · 0</span>
+      <h3>잔치국수</h3>
+      <div class="meta">멸치 육수, 담백</div>
+      <div class="tags"><span class="tag light">가벼움</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-korean type-stew spice-2">
+      <span class="badge">한식 · 국/찌개 · 🌶️🌶️</span>
+      <h3>김치찌개</h3>
+      <div class="meta">돼지고기·김치의 조화</div>
+      <div class="tags"><span class="tag spicy">칼칼</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-korean type-stew spice-3">
+      <span class="badge">한식 · 국/찌개 · 🌶️🌶️🌶️</span>
+      <h3>부대찌개(매운맛)</h3>
+      <div class="meta">햄·치즈·사골육수</div>
+      <div class="tags"><span class="tag spicy">화끈</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-korean type-grill spice-1">
+      <span class="badge">한식 · 구이 · 🌶️1</span>
+      <h3>고추장 삼겹살</h3>
+      <div class="meta">숯불향 가득</div>
+      <div class="tags"><span class="tag">든든</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+
+    <!-- Western -->
+    <article class="card cuisine-western type-rice spice-0">
+      <span class="badge">양식 · 밥 · 0</span>
+      <h3>버섯 리조또</h3>
+      <div class="meta">크리미 & 고소</div>
+      <div class="tags"><span class="tag">든든</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-western type-noodle spice-0">
+      <span class="badge">양식 · 면 · 0</span>
+      <h3>까르보나라</h3>
+      <div class="meta">계란·치즈 베이스</div>
+      <div class="tags"><span class="tag">진한맛</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-western type-noodle spice-1">
+      <span class="badge">양식 · 면 · 🌶️1</span>
+      <h3>아라비아따</h3>
+      <div class="meta">토마토·페퍼론치노</div>
+      <div class="tags"><span class="tag spicy">은근 매콤</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-western type-salad spice-0">
+      <span class="badge">양식 · 샐러드 · 0</span>
+      <h3>시저 샐러드</h3>
+      <div class="meta">치킨 토핑 가능</div>
+      <div class="tags"><span class="tag light">가벼움</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-western type-etc spice-0">
+      <span class="badge">양식 · 기타 · 0</span>
+      <h3>마르게리타 피자</h3>
+      <div class="meta">토마토·바질·모짜렐라</div>
+      <div class="tags"><span class="tag">공유하기 좋음</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+
+    <!-- Japanese -->
+    <article class="card cuisine-japanese type-rice spice-0">
+      <span class="badge">일식 · 밥 · 0</span>
+      <h3>가츠동</h3>
+      <div class="meta">돈까스 달걀 덮밥</div>
+      <div class="tags"><span class="tag">든든</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-japanese type-noodle spice-0">
+      <span class="badge">일식 · 면 · 0</span>
+      <h3>우동</h3>
+      <div class="meta">뜨끈하고 쫄깃</div>
+      <div class="tags"><span class="tag light">부드러움</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-japanese type-noodle spice-1">
+      <span class="badge">일식 · 면 · 🌶️1</span>
+      <h3>텐신 라멘</h3>
+      <div class="meta">고추기름 살짝</div>
+      <div class="tags"><span class="tag spicy">은근 매콤</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-japanese type-etc spice-0">
+      <span class="badge">일식 · 기타 · 0</span>
+      <h3>사시미 모둠</h3>
+      <div class="meta">싱싱한 회 구성</div>
+      <div class="tags"><span class="tag">공유</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+
+    <!-- Chinese -->
+    <article class="card cuisine-chinese type-noodle spice-2">
+      <span class="badge">중식 · 면 · 🌶️🌶️</span>
+      <h3>짬뽕</h3>
+      <div class="meta">얼큰한 해물 국물</div>
+      <div class="tags"><span class="tag spicy">매콤</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-chinese type-rice spice-0">
+      <span class="badge">중식 · 밥 · 0</span>
+      <h3>새우볶음밥</h3>
+      <div class="meta">불맛 가득</div>
+      <div class="tags"><span class="tag">빠른 식사</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-chinese type-etc spice-3">
+      <span class="badge">중식 · 기타 · 🌶️🌶️🌶️</span>
+      <h3>마라탕(강辣)</h3>
+      <div class="meta">취향대로 커스터마이즈</div>
+      <div class="tags"><span class="tag spicy">아주 매움</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+
+    <!-- Indian -->
+    <article class="card cuisine-indian type-rice spice-1">
+      <span class="badge">인도 · 밥 · 🌶️1</span>
+      <h3>치킨 비리야니</h3>
+      <div class="meta">향신료 밥 요리</div>
+      <div class="tags"><span class="tag">풍미</span><span class="tag spicy">약간 매움</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-indian type-etc spice-1">
+      <span class="badge">인도 · 기타 · 🌶️1</span>
+      <h3>버터 치킨 + 난</h3>
+      <div class="meta">크리미 커리 & 갓 구운 난</div>
+      <div class="tags"><span class="tag">든든</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-indian type-salad spice-0">
+      <span class="badge">인도 · 샐러드 · 0</span>
+      <h3>라씨 과일 샐러드</h3>
+      <div class="meta">요거트 드레싱</div>
+      <div class="tags"><span class="tag light">가벼움</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+
+    <!-- Etc / Fusion -->
+    <article class="card cuisine-etc type-noodle spice-0">
+      <span class="badge">기타 · 면 · 0</span>
+      <h3>쌀국수(퍼보)</h3>
+      <div class="meta">맑고 깊은 육수</div>
+      <div class="tags"><span class="tag light">가벼움</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-etc type-salad spice-0">
+      <span class="badge">기타 · 샐러드 · 0</span>
+      <h3>연어 포케</h3>
+      <div class="meta">밥/샐러드 베이스 선택</div>
+      <div class="tags"><span class="tag light">상큼</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-etc type-porridge spice-0">
+      <span class="badge">기타 · 죽 · 0</span>
+      <h3>토마토 오트밀 죽</h3>
+      <div class="meta">담백한 한끼</div>
+      <div class="tags"><span class="tag light">가벼움</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+    <article class="card cuisine-etc type-grill spice-2">
+      <span class="badge">기타 · 그릴 · 🌶️🌶️</span>
+      <h3>핫 치킨 타코</h3>
+      <div class="meta">고기/새우 선택</div>
+      <div class="tags"><span class="tag spicy">매콤</span></div>
+      <div class="cta"><a class="btn" href="#">추천 이유</a><a class="btn" href="#">주문 링크</a></div>
+    </article>
+  </main>
+
+  <footer>
+    HTML & CSS :has()로 다중 필터링 · "누적 접속자"는 <strong>이 브라우저 기준</strong>으로 localStorage에 저장됩니다. 전체 사용자 합산이 필요하면 백엔드(Firebase 등) 연결이 필요해요.
+  </footer>
+
+  <script>
+    // ===== 방문자 카운트 (이 브라우저 기준) =====
+    (function(){
+      try{
+        const TOTAL_KEY = 'visits_total';
+        const TODAY_KEY = 'visits_by_date';
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth()+1).padStart(2,'0');
+        const dd = String(today.getDate()).padStart(2,'0');
+        const dateStr = `${yyyy}-${mm}-${dd}`;
+
+        const total = Number(localStorage.getItem(TOTAL_KEY) || 0) + 1;
+        localStorage.setItem(TOTAL_KEY, String(total));
+
+        const map = JSON.parse(localStorage.getItem(TODAY_KEY) || '{}');
+        map[dateStr] = (map[dateStr] || 0) + 1;
+        localStorage.setItem(TODAY_KEY, JSON.stringify(map));
+
+        document.getElementById('stat-total').textContent = total.toLocaleString();
+        document.getElementById('stat-today').textContent = (map[dateStr]||1).toLocaleString();
+      }catch(e){
+        document.getElementById('stat-total').textContent = '지원 안됨';
+        document.getElementById('stat-today').textContent = '지원 안됨';
       }
-      // 실시간 표시
-      const countRef = db.ref("stats/" + todayKR() + "/visits");
-      countRef.on("value", snap => {
-        document.getElementById("todayCount").textContent = snap.val() || 0;
-      });
     })();
 
-    // =========================
-    // B) 투표 동기화
-    // 경로: votes/<옵션명>: count
-    // =========================
-    const voteButtonsEl = document.getElementById("voteButtons");
-    const voteResultsEl = document.getElementById("voteResults");
+    // ===== 필터 표시 & 초기화 =====
+    const filterNames = {
+      cuisine: { 'c-all':'전체', 'c-korean':'한식','c-western':'양식','c-japanese':'일식','c-chinese':'중식','c-indian':'인도','c-etc':'기타' },
+      type:    { 't-all':'전체','t-rice':'밥','t-noodle':'면','t-salad':'샐러드','t-porridge':'죽','t-grill':'구이/그릴','t-stew':'국/찌개','t-etc':'기타' },
+      spice:   { 's-all':'전체','s-0':'0','s-1':'1','s-2':'2','s-3':'3' }
+    };
 
-    // 버튼 생성
-    VOTE_OPTIONS.forEach(name => {
-      const btn = document.createElement("button");
-      btn.textContent = "투표: " + name;
-      btn.addEventListener("click", () => {
-        const ref = db.ref("votes/" + name + "/count");
-        ref.transaction(current => (current || 0) + 1);
+    function updateFilterStat(){
+      const getCheckedId = (name)=>{
+        const el = document.querySelector(`input[name="${name}"]:checked`); return el? el.id : '';
+      };
+      const c = filterNames.cuisine[getCheckedId('cuisine')] || '전체';
+      const t = filterNames.type[getCheckedId('type')] || '전체';
+      const s = filterNames.spice[getCheckedId('spice')] || '전체';
+      document.getElementById('stat-filter').textContent = `${c} · ${t} · 맵기 ${s}`;
+    }
+
+    ['cuisine','type','spice'].forEach(name=>{
+      document.querySelectorAll(`input[name="${name}"]`).forEach(el=>{
+        el.addEventListener('change', updateFilterStat);
       });
-      voteButtonsEl.appendChild(btn);
     });
+    updateFilterStat();
 
-    // 실시간 결과 표시
-    const votesRef = db.ref("votes");
-    votesRef.on("value", snap => {
-      const data = snap.val() || {};
-      // 정렬(득표 높은 순)
-      const items = Object.entries(data)
-        .map(([name, obj]) => ({ name, count: (obj && obj.count) || 0 }))
-        .sort((a,b) => b.count - a.count);
-      voteResultsEl.innerHTML = items.length
-        ? items.map(v => `<span class="pill">${v.name}: ${v.count}</span>`).join(" ")
-        : "아직 투표 없음";
+    document.getElementById('btn-reset').addEventListener('click', ()=>{
+      ['#c-all','#t-all','#s-all'].forEach(sel=>{ const el=document.querySelector(sel); if(el){ el.checked=true; } });
+      updateFilterStat();
+      window.scrollTo({top:0, behavior:'smooth'});
     });
   </script>
 </body>
