@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+function filterMenus(){
+const t = timeSelect.value, a = ageSelect.value, s = spicySelect.value;
+return MENUS.filter(m =>
+(t ? (m.time||[]).includes(t) : true) &&
+(a ? (m.age||[]).includes(a) : true) &&
+(s ? m.spicy === s : true)
+);
+}
+
+
+function pickRandom(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+
+function addToHistory(id){ history.unshift({ id, ts: Date.now() }); history = history.slice(0, 100); }
+
+
+// ====== 렌더링 ======
+function createItemHTML(menu, ts){
+return `
+<li class="group flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50">
+<div class="min-w-0">
+<div class="font-semibold truncate">${menu.name}</div>
+<div class="mt-1 flex flex-wrap gap-1 text-slate-500">${chip(menu.spicy)} ${(menu.time||[]).map(chip).join(' ')} ${(menu.age||[]).map(chip).join(' ')}</div>
+${ts ? `<div class="mt-1 text-xs text-slate-400">추천 시각: ${formatTime(ts)}</div>` : ''}
+${menu.note ? `<div class="mt-1 text-xs text-slate-500">${menu.note}</div>` : ''}
+</div>
+<div class="flex items-center gap-2 shrink-0">
+<button class="tap flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-sm border-slate-300 text-slate-600 hover:bg-slate-50" data-like="${menu.id}">👍 <span>${menu.likes||0}</span></button>
+<button class="tap flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-sm border-slate-300 text-slate-600 hover:bg-slate-50" data-dislike="${menu.id}">👎 <span>${menu.dislikes||0}</span></button>
+</div>
+</li>`;
+}
+
+
+function refreshList(){
+resultList.innerHTML = history
+.map(h => {
+const m = MENUS.find(x => x.id === h.id);
+return m ? createItemHTML(m, h.ts) : '';
+})
+.join('');
+}
+
+
+function handleListClick(e){
+const likeBtn = e.target.closest('[data-like]');
+const dislikeBtn = e.target.closest('[data-dislike]');
+if (likeBtn) {
+const id = likeBtn.getAttribute('data-like');
+sendVote(id, 'like');
+} else if (dislikeBtn) {
+const id = dislikeBtn.getAttribute('data-dislike');
+sendVote(id, 'dislike');
+}
+}
+
+
+// ====== 이벤트 ======
+async function recommendOnce(){
+const list = filterMenus();
+if (list.length === 0) { statusMsg.textContent = '조건에 맞는 메뉴가 없어요. 필터를 넓혀보세요.'; return; }
+const picked = pickRandom(list);
+addToHistory(picked.id);
+statusMsg.textContent = `추천됨: ${picked.name}`;
+refreshList();
+}
+
+
+function resetFilters(){ timeSelect.value = ageSelect.value = spicySelect.value = ''; statusMsg.textContent = ''; }
+function clearList(){ history = []; refreshList(); }
+
+
+// 초기화
+(async function init(){
+await fetchMenus();
+openSSE();
+refreshList();
+
+
+document.getElementById('recommendBtn').addEventListener('click', recommendOnce);
+document.getElementById('resetBtn').addEventListener('click', resetFilters);
+document.getElementById('clearListBtn').addEventListener('click', clearList);
+document.getElementById('resultList').addEventListener('click', handleListClick);
+})();
+</script>
+</body>
+</html>
